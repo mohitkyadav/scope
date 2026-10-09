@@ -656,7 +656,24 @@ final class EditorModel {
 
     /// Rebuilds the frame renderer and hands it to the player. Called whenever the look changes.
     private func applyRenderer() async {
-        guard let item = player.currentItem, let scene else { return }
+        guard let item = player.currentItem, let renderer = await makeRenderer(), let scene else { return }
+        item.videoComposition = scene.videoComposition(renderer: renderer)
+
+        // A paused player keeps showing the old frame until it's asked for this one again.
+        if !isPlaying {
+            await player.seek(to: player.currentTime(), toleranceBefore: .zero, toleranceAfter: .zero)
+        }
+    }
+
+    /// Everything an export needs: the timeline, how to draw it, and how loud each track is.
+    func exportJob() async -> ExportJob? {
+        guard let scene, let renderer = await makeRenderer() else { return nil }
+        return ExportJob(scene: scene, renderer: renderer, audioMix: scene.audioMix(edits: edits), name: project.name)
+    }
+
+    /// A frame renderer for the current settings and timeline.
+    private func makeRenderer() async -> FrameRenderer? {
+        guard let scene else { return nil }
 
         if let cursorTrack, cursorPathSmoothing != settings.cursorSmoothing {
             let smoothing = settings.cursorSmoothing
@@ -690,12 +707,7 @@ final class EditorModel {
             noteImages: images,
             timeMap: scene.timeMap
         )
-        item.videoComposition = scene.videoComposition(renderer: renderer)
-
-        // A paused player keeps showing the old frame until it's asked for this one again.
-        if !isPlaying {
-            await player.seek(to: player.currentTime(), toleranceBefore: .zero, toleranceAfter: .zero)
-        }
+        return renderer
     }
 
     private nonisolated static func firstFrame(of asset: AVAsset) async -> CIImage? {

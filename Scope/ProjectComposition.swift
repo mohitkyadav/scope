@@ -25,10 +25,12 @@ nonisolated struct ProjectComposition: @unchecked Sendable {
     /// The stretch of the recording the webcam covers, in recording time.
     let webcamRange: ClosedRange<Double>?
 
-    func videoComposition(renderer: FrameRenderer) -> AVVideoComposition {
+    /// Draws the frames with `renderer`. `renderSize` scales the result, e.g. for a 1080p export of a
+    /// 4K recording; it defaults to the renderer's own size.
+    func videoComposition(renderer: FrameRenderer, renderSize: CGSize? = nil, frameRate: Int = 60) -> AVVideoComposition {
         let videoComposition = AVMutableVideoComposition()
         videoComposition.customVideoCompositorClass = SceneCompositor.self
-        videoComposition.renderSize = renderer.canvasSize
+        videoComposition.renderSize = renderSize ?? renderer.canvasSize
         videoComposition.instructions = [
             SceneInstruction(
                 timeRange: CMTimeRange(start: .zero, duration: composition.duration),
@@ -41,7 +43,7 @@ nonisolated struct ProjectComposition: @unchecked Sendable {
         // Recordings only get a new video frame when something on screen changes, so a still screen
         // can go a quarter of a second or more without one. Render at a steady 60 fps instead of
         // following the video's frames, so the cursor keeps moving smoothly in between.
-        videoComposition.frameDuration = CMTime(value: 1, timescale: 60)
+        videoComposition.frameDuration = CMTime(value: 1, timescale: CMTimeScale(frameRate))
         videoComposition.sourceTrackIDForFrameTiming = kCMPersistentTrackID_Invalid
         return videoComposition
     }

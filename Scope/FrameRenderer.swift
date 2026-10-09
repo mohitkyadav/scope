@@ -31,6 +31,8 @@ nonisolated struct FrameRenderer: @unchecked Sendable {
     /// Converts the final video's time to the recording's, which the cursor, clicks and zooms use.
     /// `nil` means the two are the same.
     let timeMap: TimeMap?
+    /// For looping GIFs: ease the cursor back to where it was at the start of the loop.
+    var cursorLoop: CursorLoop?
 
     /// How long a click ripple lasts.
     private static let rippleDuration = 0.5
@@ -50,7 +52,7 @@ nonisolated struct FrameRenderer: @unchecked Sendable {
                 frame = ripple.composited(over: frame)
             }
         }
-        if let cursor = cursorLayer(at: time) {
+        if let cursor = cursorLayer(at: time, outputTime: outputTime) {
             frame = cursor.composited(over: frame)
         }
         let video = frame.cropped(to: videoRect)
@@ -250,8 +252,11 @@ nonisolated struct FrameRenderer: @unchecked Sendable {
         return generator.outputImage ?? .empty()
     }
 
-    private func cursorLayer(at time: Double) -> CIImage? {
-        guard let cursorPath, let sprite, let position = cursorPath.position(at: time) else { return nil }
+    private func cursorLayer(at time: Double, outputTime: Double) -> CIImage? {
+        guard let cursorPath, let sprite, var position = cursorPath.position(at: time) else { return nil }
+        if let cursorLoop, let loopStart = cursorPath.position(at: timeMap?.sourceTime(at: cursorLoop.start) ?? cursorLoop.start) {
+            position = cursorLoop.blend(position, toward: loopStart, at: outputTime)
+        }
 
         // Cursor positions use a top-left origin; Core Image uses bottom-left.
         let point = CGPoint(x: position.x * videoSize.width, y: (1 - position.y) * videoSize.height)
@@ -316,5 +321,23 @@ nonisolated struct FrameRenderer: @unchecked Sendable {
 private extension CIColor {
     nonisolated convenience init(_ rgb: RGB) {
         self.init(red: rgb.red, green: rgb.green, blue: rgb.blue)
+    }
+}
+
+/// Brings the cursor back to its starting point over the last moments of a looping section, so the
+/// loop has no jump. Times are in the final video.
+nonisolated struct CursorLoop: Sendable {
+    let start: Double
+    let end: Double
+
+    /// How long the return takes: a quarter of the loop, at most 0.8 s.
+    private var blendDuration: Double { min(0.8, (end - start) / 4) }
+
+    func blend(_ position: CGPoint, toward target: CGPoint, at time: Double) -> CGPoint {
+        let blendStart = end - blendDuration
+        guard time > blendStart, blendDuration > 0 else { return position }
+        let x = min((time - blendStart) / blendDuration, 1)
+        let eased = x * x * (3 - 2 * x)
+        return CGPoint(x: position.x + (target.x - position.x) * eased, y: position.y + (target.y - position.y) * eased)
     }
 }

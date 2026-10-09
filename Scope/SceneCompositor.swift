@@ -57,8 +57,14 @@ nonisolated final class SceneCompositor: NSObject, AVVideoCompositing, @unchecke
             .flatMap { request.sourceFrame(byTrackID: $0) }
             .map { CIImage(cvPixelBuffer: $0) }
 
-        let frame = instruction.renderer.render(source: screen, webcam: webcam, time: request.compositionTime.seconds)
-        context.render(frame, to: output, bounds: CGRect(origin: .zero, size: request.renderContext.size), colorSpace: colorSpace)
+        var frame = instruction.renderer.render(source: screen, webcam: webcam, time: request.compositionTime.seconds)
+        // Exports can be smaller than the recording.
+        let size = request.renderContext.size
+        let canvas = instruction.renderer.canvasSize
+        if size != canvas, canvas.width > 0, canvas.height > 0 {
+            frame = frame.transformed(by: CGAffineTransform(scaleX: size.width / canvas.width, y: size.height / canvas.height))
+        }
+        context.render(frame, to: output, bounds: CGRect(origin: .zero, size: size), colorSpace: colorSpace)
         request.finish(withComposedVideoFrame: output)
     }
 }
