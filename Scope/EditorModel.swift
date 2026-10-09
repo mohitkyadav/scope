@@ -39,6 +39,8 @@ final class EditorModel {
     private var pixelsPerPoint: CGFloat = 2
     private var sprite: CursorSprite?
     private var firstFrame: CIImage?
+    /// The screen video, its audio and the webcam video lined up on one timeline.
+    private var scene: ProjectComposition?
 
     private var timeObserver: Any?
     private var statusTask: Task<Void, Never>?
@@ -56,6 +58,7 @@ final class EditorModel {
                 return
             }
             videoSize = try await videoTrack.load(.naturalSize)
+            scene = try await ProjectComposition.make(for: project, screen: asset)
         } catch {
             errorMessage = "The recording couldn't be opened: \(error.localizedDescription)"
             return
@@ -73,7 +76,8 @@ final class EditorModel {
         sprite = CursorSprite.arrow()
         firstFrame = await Self.firstFrame(of: asset)
 
-        player.replaceCurrentItem(with: AVPlayerItem(asset: asset))
+        guard let scene else { return }
+        player.replaceCurrentItem(with: AVPlayerItem(asset: scene.composition))
         await applyRenderer()
 
         timeObserver = player.addPeriodicTimeObserver(
@@ -126,7 +130,7 @@ final class EditorModel {
 
     /// Rebuilds the frame renderer and hands it to the player. Called whenever the look changes.
     private func applyRenderer() async {
-        guard let item = player.currentItem else { return }
+        guard let item = player.currentItem, let scene else { return }
 
         if let cursorTrack, cursorPathSmoothing != settings.cursorSmoothing {
             let smoothing = settings.cursorSmoothing
@@ -146,36 +150,12 @@ final class EditorModel {
             cameraPath: cameraPath,
             firstFrame: firstFrame
         )
-        do {
-            item.videoComposition = try await Self.makeVideoComposition(for: item.asset, renderer: renderer)
-        } catch {
-            errorMessage = "The preview couldn't be set up: \(error.localizedDescription)"
-            return
-        }
+        item.videoComposition = scene.videoComposition(renderer: renderer)
 
         // A paused player keeps showing the old frame until it's asked for this one again.
         if !isPlaying {
             await player.seek(to: player.currentTime(), toleranceBefore: .zero, toleranceAfter: .zero)
         }
-    }
-
-    /// Built outside the main actor because Core Image calls the handler on its own threads.
-    private nonisolated static func makeVideoComposition(
-        for asset: AVAsset,
-        renderer: FrameRenderer
-    ) async throws -> AVVideoComposition {
-        let composition = try await AVMutableVideoComposition.videoComposition(with: asset) { request in
-            let frame = renderer.render(source: request.sourceImage, time: request.compositionTime.seconds)
-            request.finish(with: frame, context: nil)
-        }
-        composition.renderSize = renderer.canvasSize
-
-        // Recordings only get a new video frame when something on screen changes, so a still screen
-        // can go a quarter of a second or more without one. Render at a steady 60 fps instead of
-        // following the video's frames, so the cursor keeps moving smoothly in between.
-        composition.frameDuration = CMTime(value: 1, timescale: 60)
-        composition.sourceTrackIDForFrameTiming = kCMPersistentTrackID_Invalid
-        return composition
     }
 
     private nonisolated static func firstFrame(of asset: AVAsset) async -> CIImage? {

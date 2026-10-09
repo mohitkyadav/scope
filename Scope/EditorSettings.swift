@@ -21,6 +21,15 @@ nonisolated struct EditorSettings: Equatable, Sendable {
     /// Seconds spent zooming in or out.
     var zoomTransition = 0.7
 
+    /// Show the webcam bubble, if the project has a webcam video.
+    var webcamVisible = true
+    /// Centre of the bubble as fractions of the frame, from the top left.
+    var webcamX = 0.88
+    var webcamY = 0.82
+    /// Width of the bubble as a fraction of the frame's shorter side.
+    var webcamSize = 0.22
+    var webcamShape = BubbleShape.circle
+
     /// What the recording sits on. With `.none` the video fills the frame and the settings below do nothing.
     var background = Background.none
     /// Space around the recording, as a fraction of the frame's shorter side.
@@ -65,6 +74,19 @@ nonisolated enum Background: String, CaseIterable, Identifiable, Sendable {
         case .graphite: (RGB(red: 0.3, green: 0.32, blue: 0.36), RGB(red: 0.12, green: 0.13, blue: 0.15))
         case .white: (RGB(red: 0.96, green: 0.96, blue: 0.97), RGB(red: 0.96, green: 0.96, blue: 0.97))
         case .black: (RGB(red: 0.05, green: 0.05, blue: 0.06), RGB(red: 0.05, green: 0.05, blue: 0.06))
+        }
+    }
+}
+
+nonisolated enum BubbleShape: String, CaseIterable, Identifiable, Sendable {
+    case circle, roundedSquare
+
+    var id: Self { self }
+
+    var name: String {
+        switch self {
+        case .circle: "Circle"
+        case .roundedSquare: "Rounded"
         }
     }
 }

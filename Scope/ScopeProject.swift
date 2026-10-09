@@ -7,7 +7,7 @@ import Foundation
 
 /// A recording saved as a `.scope` package: a folder that Finder shows as a single file,
 /// holding the video, audio and cursor data together.
-struct ScopeProject: Hashable {
+nonisolated struct ScopeProject: Hashable, Sendable {
     static let fileExtension = "scope"
 
     let url: URL

@@ -7,8 +7,8 @@ import CoreImage
 import CoreImage.CIFilterBuiltins
 
 /// Draws one finished frame of a project: the recorded video with Scope's cursor on top, zoomed
-/// in where there are zoom segments, and optionally placed on a background with padding, rounded
-/// corners and a shadow.
+/// in where there are zoom segments, optionally placed on a background with padding, rounded
+/// corners and a shadow, and with the webcam bubble over it all.
 ///
 /// The same renderer feeds the editor's preview and, later, export, so both always match.
 /// It's an immutable value that's safe to use from Core Image's rendering threads; the editor
@@ -31,10 +31,11 @@ nonisolated struct FrameRenderer: @unchecked Sendable {
 
     var canvasSize: CGSize { videoSize }
 
-    func render(source: CIImage, time: Double) -> CIImage {
+    /// `source` is the screen frame and `webcam` the camera frame at `time`, if there are any.
+    func render(source: CIImage?, webcam: CIImage? = nil, time: Double) -> CIImage {
         let videoRect = CGRect(origin: .zero, size: videoSize)
-        // Before the first video frame there's no source image, only an infinite empty one.
-        let source = source.extent.isInfinite ? (firstFrame ?? source) : source
+        // Before the first video frame there's no source image, or only an infinite empty one.
+        let source = source.flatMap { $0.extent.isInfinite ? nil : $0 } ?? firstFrame ?? CIImage(color: .black)
         var frame = source.cropped(to: videoRect)
 
         if settings.showClicks {
@@ -45,7 +46,43 @@ nonisolated struct FrameRenderer: @unchecked Sendable {
         if let cursor = cursorLayer(at: time) {
             frame = cursor.composited(over: frame)
         }
-        return placeOnBackground(zoom(frame.cropped(to: videoRect), at: time))
+        let canvas = placeOnBackground(zoom(frame.cropped(to: videoRect), at: time))
+        guard settings.webcamVisible, let webcam, let bubble = bubble(webcam) else { return canvas }
+        return bubble.composited(over: canvas).cropped(to: CGRect(origin: .zero, size: canvasSize))
+    }
+
+    /// The webcam as a round (or rounded square) bubble with a thin rim and a soft shadow. It sits on
+    /// the finished frame, so it isn't zoomed and stays where it's placed.
+    private func bubble(_ webcam: CIImage) -> CIImage? {
+        let extent = webcam.extent
+        guard !extent.isInfinite, extent.width > 0, extent.height > 0 else { return nil }
+
+        let shorterSide = min(canvasSize.width, canvasSize.height)
+        let diameter = settings.webcamSize * shorterSide
+        let margin = shorterSide * 0.02
+        let center = CGPoint(
+            x: min(max(settings.webcamX * canvasSize.width, diameter / 2 + margin), canvasSize.width - diameter / 2 - margin),
+            y: min(max((1 - settings.webcamY) * canvasSize.height, diameter / 2 + margin), canvasSize.height - diameter / 2 - margin)
+        )
+        let rect = CGRect(x: center.x - diameter / 2, y: center.y - diameter / 2, width: diameter, height: diameter)
+        let radius = settings.webcamShape == .circle ? diameter / 2 : diameter * 0.18
+
+        // Fill the bubble with the middle of the camera image, mirrored like a camera preview.
+        let scale = diameter / min(extent.width, extent.height)
+        let camera = webcam.transformed(by: CGAffineTransform(translationX: -extent.midX, y: -extent.midY)
+            .concatenating(CGAffineTransform(scaleX: -scale, y: scale))
+            .concatenating(CGAffineTransform(translationX: center.x, y: center.y)))
+        let face = camera.applyingFilter("CIBlendWithMask", parameters: [
+            kCIInputBackgroundImageKey: CIImage.empty(),
+            kCIInputMaskImageKey: roundedRectangle(rect, radius: radius, color: .white),
+        ])
+
+        let rimWidth = max(diameter * 0.015, 2)
+        let rim = roundedRectangle(rect.insetBy(dx: -rimWidth, dy: -rimWidth), radius: radius + rimWidth, color: CIColor(red: 1, green: 1, blue: 1, alpha: 0.85))
+        let shadow = roundedRectangle(rect.offsetBy(dx: 0, dy: -diameter * 0.03), radius: radius, color: CIColor(red: 0, green: 0, blue: 0, alpha: 0.4))
+            .applyingGaussianBlur(sigma: diameter * 0.05)
+
+        return face.composited(over: rim).composited(over: shadow)
     }
 
     /// Scales the frame up around the camera's focus point. The focus is kept far enough from the
