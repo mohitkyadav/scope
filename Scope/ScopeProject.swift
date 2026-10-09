@@ -15,6 +15,9 @@ struct ScopeProject: Hashable {
     /// Screen video, with system audio and microphone as separate audio tracks.
     var videoURL: URL { url.appending(path: "screen.mp4") }
     var cursorURL: URL { url.appending(path: "cursor.json") }
+    /// Camera video, if a camera was recorded, and how it lines up with the screen video.
+    var webcamURL: URL { url.appending(path: "webcam.mov") }
+    var webcamInfoURL: URL { url.appending(path: "webcam.json") }
 
     var name: String { url.deletingPathExtension().lastPathComponent }
 

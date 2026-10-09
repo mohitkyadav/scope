@@ -19,6 +19,8 @@
 			<true/>
 		</dict>
 	</array>
+	<key>NSCameraUseContinuityCameraDeviceType</key>
+	<true/>
 	<key>UTExportedTypeDeclarations</key>
 	<array>
 		<dict>

@@ -12,6 +12,7 @@ struct ContentView: View {
     @State private var sources = CaptureSources()
     @State private var library = RecordingLibrary()
     @State private var audio = AudioSettings()
+    @State private var camera = CameraSettings()
     @State private var microphoneMeter = AudioMeter()
     @State private var systemAudioMeter = AudioMeter()
     @Environment(Recorder.self) private var recorder
@@ -53,6 +54,7 @@ struct ContentView: View {
                             microphoneLevel: microphoneMeter.level,
                             systemAudioLevel: systemAudioMeter.level
                         )
+                        CameraControls(settings: camera)
                     }
                     .disabled(recorder.state != .idle)
                 }
@@ -72,7 +74,7 @@ struct ContentView: View {
             }
             .padding(20)
         }
-        .frame(minWidth: 640, minHeight: 360)
+        .frame(minWidth: 640, minHeight: 400)
         .onChange(of: scenePhase) {
             if scenePhase == .active {
                 permission.refresh()
@@ -96,12 +98,17 @@ struct ContentView: View {
         }
         .task {
             audio.loadMicrophones()
+            camera.loadCameras()
             if audio.microphoneEnabled {
                 await audio.requestMicrophoneAccess()
             }
-            // Reload when a microphone is plugged in.
+            if camera.cameraEnabled {
+                await camera.requestCameraAccess()
+            }
+            // Reload when a microphone or camera is plugged in.
             for await _ in NotificationCenter.default.notifications(named: AVCaptureDevice.wasConnectedNotification) {
                 audio.loadMicrophones()
+                camera.loadCameras()
             }
         }
         .task(id: microphoneToMeter) {
@@ -116,6 +123,7 @@ struct ContentView: View {
             // ...or unplugged.
             for await _ in NotificationCenter.default.notifications(named: AVCaptureDevice.wasDisconnectedNotification) {
                 audio.loadMicrophones()
+                camera.loadCameras()
             }
         }
         .task(id: permission.isGranted) {
@@ -178,6 +186,7 @@ struct ContentView: View {
                 area: area,
                 microphoneID: audio.microphoneToRecord?.id,
                 systemAudio: audio.systemAudioEnabled,
+                cameraID: camera.cameraToRecord?.id,
                 project: RecordingLibrary.newProject(),
                 countdownScreen: sources.selectedScreen
             )
