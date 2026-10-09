@@ -35,7 +35,7 @@ struct EditorView: View {
 
                     Divider()
 
-                    EditorInspector(settings: $model.settings)
+                    EditorInspector(settings: $model.settings, zoomCount: model.zoomSegments.count)
                         .frame(width: 300)
                 }
             }

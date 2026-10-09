@@ -8,9 +8,29 @@ import SwiftUI
 /// The settings panel on the right of the editor.
 struct EditorInspector: View {
     @Binding var settings: EditorSettings
+    let zoomCount: Int
 
     var body: some View {
         Form {
+            Section {
+                Toggle("Auto zoom", isOn: $settings.autoZoom)
+
+                Group {
+                    LabeledSlider("Level", value: $settings.zoomLevel, in: 1.25...3) {
+                        String(format: "%.1f×", $0)
+                    }
+                    LabeledSlider("Transition", value: $settings.zoomTransition, in: 0.3...1.5) {
+                        String(format: "%.1f s", $0)
+                    }
+                }
+                .disabled(!settings.autoZoom)
+            } header: {
+                Text("Zoom")
+            } footer: {
+                Text(zoomCount == 1 ? "1 zoom, placed around your clicks." : "\(zoomCount) zooms, placed around your clicks.")
+                    .foregroundStyle(.secondary)
+            }
+
             Section("Cursor") {
                 LabeledSlider("Smoothing", value: $settings.cursorSmoothing, in: 0...1) {
                     $0 == 0 ? "Off" : "\(Int($0 * 100))%"
@@ -120,6 +140,6 @@ struct LabeledSlider: View {
 }
 
 #Preview {
-    EditorInspector(settings: .constant(EditorSettings()))
+    EditorInspector(settings: .constant(EditorSettings()), zoomCount: 3)
         .frame(width: 300)
 }
