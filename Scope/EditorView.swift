@@ -9,6 +9,7 @@ struct EditorView: View {
     static let windowID = "editor"
 
     @State private var model: EditorModel
+    @State private var isExporting = false
     @Environment(\.undoManager) private var undoManager
 
     init(project: ScopeProject) {
@@ -70,6 +71,21 @@ struct EditorView: View {
         }
         .frame(minWidth: 960, minHeight: 680)
         .navigationTitle(model.project.name)
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                Button {
+                    isExporting = true
+                } label: {
+                    Label("Export", systemImage: "square.and.arrow.up")
+                }
+                .keyboardShortcut("e")
+                .help("Export as a video or GIF (⌘E)")
+                .disabled(model.scene == nil)
+            }
+        }
+        .sheet(isPresented: $isExporting) {
+            ExportSheet(model: model)
+        }
         .task {
             RecentProjects.shared.add(model.project.url)
             await model.load()

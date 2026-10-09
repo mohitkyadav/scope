@@ -188,7 +188,8 @@ struct LabeledSlider: View {
                 Text(format(value))
                     .monospacedDigit()
                     .foregroundStyle(.secondary)
-                    .frame(width: 40, alignment: .trailing)
+                    .frame(minWidth: 40, alignment: .trailing)
+                    .fixedSize()
             }
         } label: {
             Text(title)

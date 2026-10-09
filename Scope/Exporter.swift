@@ -245,9 +245,11 @@ nonisolated enum Exporter {
 
     /// Renders a section of the timeline as frames and saves them as a GIF that loops forever.
     static func exportGIF(_ job: ExportJob, options: GIFOptions, to url: URL, progress: @escaping @Sendable (Double) -> Void) async throws {
+        let frameDuration = 1 / Double(options.frameRate)
         var renderer = job.renderer
         if options.loopsCursor {
-            renderer.cursorLoop = CursorLoop(start: options.start, end: options.end)
+            // Finish easing back on the last frame, so the first frame follows it without a jump.
+            renderer.cursorLoop = CursorLoop(start: options.start, end: options.end - frameDuration)
         }
 
         let size = Self.size(forHeight: Int((Double(options.width) * job.canvasSize.height / max(job.canvasSize.width, 1)).rounded()), canvas: job.canvasSize)
@@ -256,7 +258,6 @@ nonisolated enum Exporter {
         generator.requestedTimeToleranceBefore = .zero
         generator.requestedTimeToleranceAfter = .zero
 
-        let frameDuration = 1 / Double(options.frameRate)
         let times = stride(from: options.start, to: options.end, by: frameDuration).map {
             CMTime(seconds: $0, preferredTimescale: 60_000)
         }
