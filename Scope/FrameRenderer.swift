@@ -6,7 +6,8 @@
 import CoreImage
 import CoreImage.CIFilterBuiltins
 
-/// Draws one finished frame of a project: the recorded video with Scope's cursor on top.
+/// Draws one finished frame of a project: the recorded video with Scope's cursor on top,
+/// optionally placed on a background with padding, rounded corners and a shadow.
 ///
 /// The same renderer feeds the editor's preview and, later, export, so both always match.
 /// It's an immutable value that's safe to use from Core Image's rendering threads; the editor
@@ -36,7 +37,63 @@ nonisolated struct FrameRenderer: @unchecked Sendable {
         if let cursor = cursorLayer(at: time) {
             frame = cursor.composited(over: frame)
         }
-        return frame.cropped(to: videoRect)
+        return placeOnBackground(frame.cropped(to: videoRect))
+    }
+
+    /// Shrinks the video into the padded area of the canvas, rounds its corners and puts it
+    /// on the background with a soft shadow.
+    private func placeOnBackground(_ video: CIImage) -> CIImage {
+        guard let (topLeft, bottomRight) = settings.background.colors else { return video }
+
+        let canvas = CGRect(origin: .zero, size: canvasSize)
+        let shorterSide = min(canvas.width, canvas.height)
+        let inset = settings.padding * shorterSide
+        let scale = min(
+            (canvas.width - 2 * inset) / videoSize.width,
+            (canvas.height - 2 * inset) / videoSize.height
+        )
+        let size = CGSize(width: videoSize.width * scale, height: videoSize.height * scale)
+        let frame = CGRect(
+            x: (canvas.width - size.width) / 2,
+            y: (canvas.height - size.height) / 2,
+            width: size.width,
+            height: size.height
+        )
+        let radius = settings.cornerRadius * pixelsPerPoint * scale
+
+        let placed = video.transformed(by: CGAffineTransform(scaleX: scale, y: scale)
+            .concatenating(CGAffineTransform(translationX: frame.minX, y: frame.minY)))
+        let rounded = placed.applyingFilter("CIBlendWithMask", parameters: [
+            kCIInputBackgroundImageKey: CIImage.empty(),
+            kCIInputMaskImageKey: roundedRectangle(frame, radius: radius, color: .white),
+        ])
+
+        let gradient = CIFilter.linearGradient()
+        gradient.point0 = CGPoint(x: canvas.minX, y: canvas.maxY)
+        gradient.point1 = CGPoint(x: canvas.maxX, y: canvas.minY)
+        gradient.color0 = CIColor(topLeft)
+        gradient.color1 = CIColor(bottomRight)
+        var result = (gradient.outputImage ?? CIImage(color: CIColor(topLeft))).cropped(to: canvas)
+
+        if settings.shadow {
+            let shadow = roundedRectangle(
+                frame.offsetBy(dx: 0, dy: -shorterSide * 0.01),
+                radius: radius,
+                color: CIColor(red: 0, green: 0, blue: 0, alpha: 0.45)
+            )
+            .applyingGaussianBlur(sigma: shorterSide * 0.02)
+            result = shadow.composited(over: result)
+        }
+
+        return rounded.composited(over: result).cropped(to: canvas)
+    }
+
+    private func roundedRectangle(_ rect: CGRect, radius: CGFloat, color: CIColor) -> CIImage {
+        let generator = CIFilter.roundedRectangleGenerator()
+        generator.extent = rect
+        generator.radius = Float(radius)
+        generator.color = color
+        return generator.outputImage ?? .empty()
     }
 
     private func cursorLayer(at time: Double) -> CIImage? {
@@ -99,5 +156,11 @@ nonisolated struct FrameRenderer: @unchecked Sendable {
                 .applyingFilter("CISourceOutCompositing", parameters: [kCIInputBackgroundImageKey: holeImage])
                 .cropped(to: bounds)
         }
+    }
+}
+
+private extension CIColor {
+    nonisolated convenience init(_ rgb: RGB) {
+        self.init(red: rgb.red, green: rgb.green, blue: rgb.blue)
     }
 }

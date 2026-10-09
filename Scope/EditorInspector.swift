@@ -20,8 +20,72 @@ struct EditorInspector: View {
                 }
                 Toggle("Show clicks", isOn: $settings.showClicks)
             }
+
+            Section("Background") {
+                BackgroundPicker(selection: $settings.background)
+
+                Group {
+                    LabeledSlider("Padding", value: $settings.padding, in: 0...0.2) {
+                        "\(Int(($0 * 100).rounded()))%"
+                    }
+                    LabeledSlider("Corners", value: $settings.cornerRadius, in: 0...40) {
+                        "\(Int($0.rounded()))"
+                    }
+                    Toggle("Shadow", isOn: $settings.shadow)
+                }
+                .disabled(settings.background == .none)
+            }
         }
         .formStyle(.grouped)
+    }
+}
+
+/// A row of swatches, one per background.
+private struct BackgroundPicker: View {
+    @Binding var selection: Background
+
+    var body: some View {
+        LazyVGrid(columns: Array(repeating: GridItem(.fixed(28), spacing: 10), count: 8), spacing: 10) {
+            ForEach(Background.allCases) { background in
+                Button {
+                    selection = background
+                } label: {
+                    swatch(for: background)
+                        .frame(width: 28, height: 28)
+                        .overlay {
+                            if background == selection {
+                                Circle()
+                                    .stroke(Color.accentColor, lineWidth: 2)
+                                    .padding(-4)
+                            }
+                        }
+                }
+                .buttonStyle(.plain)
+                .help(background.name)
+                .accessibilityLabel(background.name)
+                .accessibilityAddTraits(background == selection ? .isSelected : [])
+            }
+        }
+        .padding(.vertical, 4)
+    }
+
+    @ViewBuilder
+    private func swatch(for background: Background) -> some View {
+        if let (topLeft, bottomRight) = background.colors {
+            Circle()
+                .fill(LinearGradient(colors: [Color(topLeft), Color(bottomRight)], startPoint: .topLeading, endPoint: .bottomTrailing))
+                .overlay(Circle().stroke(.separator))
+        } else {
+            Circle()
+                .stroke(.separator)
+                .overlay(Image(systemName: "nosign").foregroundStyle(.secondary))
+        }
+    }
+}
+
+private extension Color {
+    init(_ rgb: RGB) {
+        self.init(red: rgb.red, green: rgb.green, blue: rgb.blue)
     }
 }
 
