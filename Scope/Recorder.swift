@@ -63,7 +63,8 @@ final class Recorder: NSObject {
         configuration.height = Int(filter.contentRect.height * CGFloat(filter.pointPixelScale))
         configuration.minimumFrameInterval = CMTime(value: 1, timescale: 60)
         configuration.queueDepth = 6
-        configuration.showsCursor = true
+        // Scope draws its own cursor from the recorded cursor data, so leave the real one out.
+        configuration.showsCursor = false
 
         if systemAudio {
             configuration.capturesAudio = true
