@@ -8,7 +8,7 @@ import SwiftUI
 @main
 struct ScopeApp: App {
     var body: some Scene {
-        WindowGroup {
+        WindowGroup("Scope") {
             ContentView()
         }
     }
