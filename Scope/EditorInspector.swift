@@ -45,7 +45,8 @@ private struct BackgroundPicker: View {
     @Binding var selection: Background
 
     var body: some View {
-        LazyVGrid(columns: Array(repeating: GridItem(.fixed(28), spacing: 10), count: 8), spacing: 10) {
+        // Adaptive columns wrap onto a second row instead of forcing the panel wider than it is.
+        LazyVGrid(columns: [GridItem(.adaptive(minimum: 28, maximum: 28), spacing: 10)], alignment: .leading, spacing: 10) {
             ForEach(Background.allCases) { background in
                 Button {
                     selection = background
