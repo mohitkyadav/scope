@@ -75,6 +75,8 @@ struct EditorView: View {
         }
         .onDisappear {
             model.close()
+            // The project is closed, so its edits can't be undone any more.
+            undoManager?.removeAllActions(withTarget: model)
         }
     }
 }
