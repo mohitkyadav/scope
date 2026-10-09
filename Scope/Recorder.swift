@@ -31,17 +31,25 @@ final class Recorder: NSObject {
     private var timerTask: Task<Void, Never>?
     private var countdownTask: Task<Bool, Never>?
     private var stopHotKey: GlobalHotKey?
+    private var cursorRecorder: CursorRecorder?
+    private var cursorURL: URL?
+    /// `systemUptime` when capture started, and when the first video frame was written.
+    private var captureStartTime: TimeInterval = 0
+    private var videoStartTime: TimeInterval?
 
     var isRecording: Bool { state == .recording }
 
     /// `microphoneID` is the capture device to record alongside the screen, or `nil` for no microphone.
     /// `systemAudio` records the sound the computer plays (from every app for a display, or from the
     /// window's app for a window), but never Scope's own.
+    /// Cursor movement and clicks inside `area` are saved to `cursorURL`.
     func start(
         filter: SCContentFilter,
+        area: CaptureArea,
         microphoneID: String?,
         systemAudio: Bool,
         outputURL: URL,
+        cursorURL: URL,
         countdownScreen: NSScreen?
     ) async {
         guard state == .idle else { return }
@@ -86,15 +94,24 @@ final class Recorder: NSObject {
         let stream = SCStream(filter: filter, configuration: configuration, delegate: self)
         let recordingOutput = SCRecordingOutput(configuration: outputConfiguration, delegate: self)
 
+        // Start following the cursor first, so its position is known when the first frame arrives.
+        let cursorRecorder = CursorRecorder(area: area)
+        cursorRecorder.start()
+        captureStartTime = ProcessInfo.processInfo.systemUptime
+        videoStartTime = nil
+
         do {
             try stream.addRecordingOutput(recordingOutput)
             try await stream.startCapture()
         } catch {
+            _ = cursorRecorder.stop(videoStart: captureStartTime)
             errorMessage = error.localizedDescription
             state = .idle
             return
         }
 
+        self.cursorRecorder = cursorRecorder
+        self.cursorURL = cursorURL
         self.stream = stream
         self.recordingOutput = recordingOutput
         self.outputURL = outputURL
@@ -145,6 +162,17 @@ final class Recorder: NSObject {
         if let error {
             errorMessage = error.localizedDescription
         }
+
+        if let cursorRecorder, let cursorURL {
+            let track = cursorRecorder.stop(videoStart: videoStartTime ?? captureStartTime)
+            do {
+                try track.write(to: cursorURL)
+            } catch {
+                errorMessage = "The cursor data couldn't be saved: \(error.localizedDescription)"
+            }
+        }
+        cursorRecorder = nil
+        cursorURL = nil
         lastRecordingURL = outputURL
 
         timerTask?.cancel()
@@ -169,6 +197,16 @@ extension Recorder: SCStreamDelegate {
 }
 
 extension Recorder: SCRecordingOutputDelegate {
+    nonisolated func recordingOutputDidStartRecording(_ recordingOutput: SCRecordingOutput) {
+        // Read the clock here rather than after hopping to the main actor, so cursor times line up with the video.
+        let now = ProcessInfo.processInfo.systemUptime
+        Task { @MainActor in
+            if videoStartTime == nil {
+                videoStartTime = now
+            }
+        }
+    }
+
     nonisolated func recordingOutput(_ recordingOutput: SCRecordingOutput, didFailWithError error: Error) {
         Task { @MainActor in
             finish(error: error)

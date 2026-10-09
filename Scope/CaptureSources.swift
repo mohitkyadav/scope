@@ -71,6 +71,14 @@ final class CaptureSources {
         }
     }
 
+    /// Where the selection is on screen, for recording cursor positions relative to it.
+    var selectedArea: CaptureArea? {
+        switch kind {
+        case .display: selectedDisplayID.map(CaptureArea.display)
+        case .window: selectedWindowID.map(CaptureArea.window)
+        }
+    }
+
     /// The screen the countdown appears on: the chosen display, or the one the chosen window is on.
     var selectedScreen: NSScreen? {
         switch kind {
