@@ -19,7 +19,7 @@ struct EditorInspector: View {
                     LabeledSlider("Level", value: $settings.zoomLevel, in: 1.25...3) {
                         String(format: "%.1f×", $0)
                     }
-                    LabeledSlider("Transition", value: $settings.zoomTransition, in: 0.3...1.5) {
+                    LabeledSlider("Transition", value: $settings.zoomTransition, in: 0.3...5) {
                         String(format: "%.1f s", $0)
                     }
                 }
