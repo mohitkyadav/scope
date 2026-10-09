@@ -3,61 +3,73 @@
     {
       "layers": [
         {
-          "image-name": "cursor.svg",
-          "name": "cursor",
+          "image-name": "record-dot.svg",
+          "name": "record-dot",
           "glass": true
+        },
+        {
+          "image-name": "record-ring.svg",
+          "name": "record-ring",
+          "glass": true,
+          "opacity": 0.75
         }
       ],
-      "name": "Cursor",
+      "name": "Record",
       "shadow": {
-        "kind": "neutral",
-        "opacity": 0.6
+        "kind": "layer-color",
+        "opacity": 0.5
       },
       "specular": true
     },
     {
       "layers": [
         {
-          "image-name": "lens.svg",
-          "name": "lens",
-          "glass": true
-        }
-      ],
-      "name": "Lens",
-      "shadow": {
-        "kind": "neutral",
-        "opacity": 0.6
-      },
-      "specular": true,
-      "translucency": {
-        "enabled": true,
-        "value": 0.4
-      }
-    },
-    {
-      "layers": [
-        {
-          "image-name": "rings.svg",
-          "name": "rings",
+          "image-name": "brackets.svg",
+          "name": "brackets",
           "glass": false
         }
       ],
-      "name": "Rings",
+      "name": "Brackets",
       "shadow": {
         "kind": "layer-color",
-        "opacity": 0.3
+        "opacity": 0.25
       },
       "specular": false
     },
     {
       "layers": [
         {
-          "image-name": "crosshair.svg",
-          "name": "crosshair",
+          "image-name": "window-controls.svg",
+          "name": "window-controls",
+          "glass": true
+        },
+        {
+          "image-name": "window.svg",
+          "name": "window",
+          "glass": true
+        }
+      ],
+      "name": "Window",
+      "shadow": {
+        "kind": "neutral",
+        "opacity": 0.35
+      },
+      "specular": true,
+      "translucency": {
+        "enabled": true,
+        "value": 0.6
+      },
+      "blur-material": 0.3
+    },
+    {
+      "layers": [
+        {
+          "image-name": "blobs.svg",
+          "name": "blobs",
           "glass": false
         }
       ],
-      "name": "Crosshair",
+      "name": "Blobs",
       "shadow": {
         "kind": "neutral",
         "opacity": 0
@@ -67,8 +79,8 @@
   ],
   "fill": {
     "linear-gradient": [
-      "srgb:0.13725,0.16471,0.23137,1.00000",
-      "srgb:0.05882,0.06667,0.10196,1.00000"
+      "srgb:1.00000,0.97255,0.93333,1.00000",
+      "srgb:1.00000,0.85098,0.74118,1.00000"
     ]
   },
   "supported-platforms": {
