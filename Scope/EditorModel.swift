@@ -18,6 +18,8 @@ final class EditorModel {
     private(set) var currentTime: TimeInterval = 0
     private(set) var isPlaying = false
     private(set) var errorMessage: String?
+    /// Where the preview zooms in, suggested from the recorded clicks.
+    private(set) var zoomSegments: [ZoomSegment] = []
 
     var settings = EditorSettings() {
         didSet {
@@ -64,6 +66,7 @@ final class EditorModel {
             if track.areaWidth > 0 {
                 pixelsPerPoint = videoSize.width / track.areaWidth
             }
+            zoomSegments = AutoZoom.segments(for: track.clicks, duration: duration)
         }
         sprite = CursorSprite.arrow()
         firstFrame = await Self.firstFrame(of: asset)
