@@ -39,6 +39,10 @@ nonisolated struct CursorTrack: Codable, Sendable {
     var samples: [Sample]
     var clicks: [Click]
 
+    static func read(from url: URL) throws -> CursorTrack {
+        try JSONDecoder().decode(CursorTrack.self, from: Data(contentsOf: url))
+    }
+
     func write(to url: URL) throws {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
