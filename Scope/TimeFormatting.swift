@@ -13,4 +13,12 @@ extension TimeInterval {
             ? duration.formatted(.time(pattern: .hourMinuteSecond))
             : duration.formatted(.time(pattern: .minuteSecond))
     }
+
+    /// `0:42.3`, with tenths of a second, for the timeline.
+    var timecodeString: String {
+        let tenths = Int((self * 10).rounded(.down))
+        let minutes = tenths / 600
+        let seconds = (tenths / 10) % 60
+        return String(format: "%d:%02d.%d", minutes, seconds, tenths % 10)
+    }
 }

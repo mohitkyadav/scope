@@ -9,6 +9,8 @@ import Foundation
 nonisolated struct ProjectFile: Codable, Sendable {
     var version = 1
     var settings = EditorSettings()
+    /// `nil` until the timeline is first edited; the editor then starts from the untouched recording.
+    var edits: TimelineEdits?
 
     static func read(from url: URL) throws -> ProjectFile {
         try JSONDecoder().decode(ProjectFile.self, from: Data(contentsOf: url))

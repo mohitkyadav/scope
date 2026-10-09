@@ -25,14 +25,18 @@ nonisolated struct FrameRenderer: @unchecked Sendable {
     let cameraPath: CursorPath?
     /// Shown before the recording's first video frame arrives, instead of a black frame.
     let firstFrame: CIImage?
+    /// Converts the final video's time to the recording's, which the cursor, clicks and zooms use.
+    /// `nil` means the two are the same.
+    let timeMap: TimeMap?
 
     /// How long a click ripple lasts.
     private static let rippleDuration = 0.5
 
     var canvasSize: CGSize { videoSize }
 
-    /// `source` is the screen frame and `webcam` the camera frame at `time`, if there are any.
-    func render(source: CIImage?, webcam: CIImage? = nil, time: Double) -> CIImage {
+    /// `source` is the screen frame and `webcam` the camera frame at `time` in the final video, if there are any.
+    func render(source: CIImage?, webcam: CIImage? = nil, time outputTime: Double) -> CIImage {
+        let time = timeMap?.sourceTime(at: outputTime) ?? outputTime
         let videoRect = CGRect(origin: .zero, size: videoSize)
         // Before the first video frame there's no source image, or only an infinite empty one.
         let source = source.flatMap { $0.extent.isInfinite ? nil : $0 } ?? firstFrame ?? CIImage(color: .black)

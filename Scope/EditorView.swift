@@ -35,17 +35,17 @@ struct EditorView: View {
 
                         Divider()
 
-                        TransportBar(model: model)
+                        EditorTimeline(model: model)
                     }
 
                     Divider()
 
-                    EditorInspector(settings: $model.settings, zoomCount: model.zoomSegments.count, hasWebcam: model.hasWebcam)
+                    EditorInspector(settings: $model.settings, zoomCount: model.edits.zooms.count, hasWebcam: model.hasWebcam)
                         .frame(width: 300)
                 }
             }
         }
-        .frame(minWidth: 900, minHeight: 520)
+        .frame(minWidth: 960, minHeight: 680)
         .navigationTitle(model.project.name)
         .task {
             await model.load()

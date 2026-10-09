@@ -28,7 +28,7 @@ struct EditorInspector: View {
             } header: {
                 Text("Zoom")
             } footer: {
-                Text(zoomCount == 1 ? "1 zoom, placed around your clicks." : "\(zoomCount) zooms, placed around your clicks.")
+                Text(zoomCount == 1 ? "1 zoom on the timeline." : "\(zoomCount) zooms on the timeline.")
                     .foregroundStyle(.secondary)
             }
 

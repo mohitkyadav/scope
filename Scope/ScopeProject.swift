@@ -20,6 +20,8 @@ nonisolated struct ScopeProject: Hashable, Sendable {
     var webcamInfoURL: URL { url.appending(path: "webcam.json") }
     /// Edits made in the editor.
     var projectFileURL: URL { url.appending(path: "project.json") }
+    /// Imported audio files.
+    var audioFolderURL: URL { url.appending(path: "audio", directoryHint: .isDirectory) }
 
     var name: String { url.deletingPathExtension().lastPathComponent }
 

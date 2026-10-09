@@ -7,7 +7,7 @@ import Foundation
 
 /// A stretch of the recording that's shown zoomed in. Zooming in happens just before `start`
 /// and zooming out just after `end`, so the view is fully zoomed for the whole segment.
-nonisolated struct ZoomSegment: Identifiable, Equatable, Sendable {
+nonisolated struct ZoomSegment: Identifiable, Codable, Equatable, Sendable {
     var id = UUID()
     var start: Double
     var end: Double
