@@ -9,6 +9,7 @@ struct EditorView: View {
     static let windowID = "editor"
 
     @State private var model: EditorModel
+    @Environment(\.undoManager) private var undoManager
 
     init(project: ScopeProject) {
         _model = State(initialValue: EditorModel(project: project))
@@ -40,7 +41,12 @@ struct EditorView: View {
 
                     Divider()
 
-                    EditorInspector(settings: $model.settings, zoomCount: model.edits.zooms.count, hasWebcam: model.hasWebcam)
+                    EditorInspector(
+                        settings: $model.settings,
+                        zoomCount: model.edits.zooms.count,
+                        hasWebcam: model.hasWebcam,
+                        suggestZooms: { model.suggestZooms(undoManager: undoManager) }
+                    )
                         .frame(width: 300)
                 }
             }

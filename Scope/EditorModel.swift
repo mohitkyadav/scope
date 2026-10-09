@@ -334,6 +334,51 @@ final class EditorModel {
         return true
     }
 
+    // MARK: - Zooms
+
+    private static let minimumZoomLength = 0.3
+
+    /// Adds a two-second zoom at the playhead and selects it.
+    func addZoom(undoManager: UndoManager?) {
+        let start = timeMap.sourceTime(at: currentTime)
+        let zoom = ZoomSegment(start: start, end: min(start + 2, sourceDuration))
+        guard zoom.end - zoom.start >= Self.minimumZoomLength else { return }
+        perform("Add Zoom", undoManager: undoManager) { $0.zooms.append(zoom) }
+        selection = .zoom(zoom.id)
+    }
+
+    /// Replaces the zooms with ones suggested from the recorded clicks.
+    func suggestZooms(undoManager: UndoManager?) {
+        let zooms = AutoZoom.segments(for: cursorTrack?.clicks ?? [], duration: sourceDuration)
+        perform("Suggest Zooms", undoManager: undoManager) { $0.zooms = zooms }
+    }
+
+    /// Moves or resizes a zoom during a drag. `seconds` is how far it's been dragged along the final
+    /// video; zooms keep their place in the recording, so the drag is converted back to recording time.
+    func dragZoom(_ id: UUID, _ edit: BlockEdit, by seconds: Double) {
+        beginGesture()
+        guard let original = gestureStart?.zooms.first(where: { $0.id == id }) else { return }
+        let map = timeMap
+        let limit = sourceDuration
+        func moved(_ time: Double) -> Double {
+            map.sourceTime(at: map.outputTime(at: time) + seconds)
+        }
+        update { edits in
+            guard let index = edits.zooms.firstIndex(where: { $0.id == id }) else { return }
+            switch edit {
+            case .move:
+                let length = original.end - original.start
+                let start = min(max(moved(original.start), 0), limit - length)
+                edits.zooms[index].start = start
+                edits.zooms[index].end = start + length
+            case .trimStart:
+                edits.zooms[index].start = min(max(moved(original.start), 0), original.end - Self.minimumZoomLength)
+            case .trimEnd:
+                edits.zooms[index].end = max(min(moved(original.end), limit), original.start + Self.minimumZoomLength)
+            }
+        }
+    }
+
     // MARK: - Rebuilding playback
 
     private func scheduleRebuild() {

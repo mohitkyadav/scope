@@ -10,6 +10,8 @@ struct EditorInspector: View {
     @Binding var settings: EditorSettings
     let zoomCount: Int
     let hasWebcam: Bool
+    /// Replaces the timeline's zooms with ones placed around the clicks.
+    var suggestZooms: () -> Void = {}
 
     var body: some View {
         Form {
@@ -22,6 +24,9 @@ struct EditorInspector: View {
                     }
                     LabeledSlider("Transition", value: $settings.zoomTransition, in: 0.3...5) {
                         String(format: "%.1f s", $0)
+                    }
+                    LabeledContent("Zooms") {
+                        Button("Suggest from Clicks", action: suggestZooms)
                     }
                 }
                 .disabled(!settings.autoZoom)

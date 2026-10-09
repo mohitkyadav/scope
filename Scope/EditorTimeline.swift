@@ -112,6 +112,13 @@ private struct TimelineToolbar: View {
             .disabled(!model.canDeleteSelection)
             .help("Delete the selected item (Delete)")
 
+            Button {
+                model.addZoom(undoManager: undoManager)
+            } label: {
+                Label("Add Zoom", systemImage: "plus.magnifyingglass")
+            }
+            .help("Add a zoom at the playhead")
+
             Spacer()
 
             Image(systemName: "minus.magnifyingglass")
@@ -235,9 +242,17 @@ private struct TimelineTracks: View {
             ForEach(model.edits.zooms) { zoom in
                 let start = map.outputTime(at: zoom.start)
                 let end = map.outputTime(at: zoom.end)
-                TimelineBlock(title: nil, color: .purple, isSelected: model.selection == .zoom(zoom.id))
-                    .frame(width: max((end - start) * pointsPerSecond, 2))
-                    .offset(x: start * pointsPerSecond)
+                EditableBlock(
+                    title: nil,
+                    color: .purple,
+                    isSelected: model.selection == .zoom(zoom.id),
+                    canMove: true,
+                    onSelect: { model.selection = .zoom(zoom.id) },
+                    onDrag: { edit, points in model.dragZoom(zoom.id, edit, by: points / pointsPerSecond) },
+                    onDragEnd: { edit in model.endGesture(edit == .move ? "Move Zoom" : "Resize Zoom", undoManager: undoManager) }
+                )
+                .frame(width: max((end - start) * pointsPerSecond, 12))
+                .offset(x: start * pointsPerSecond)
             }
 
         case .notes:
