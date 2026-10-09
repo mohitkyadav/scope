@@ -8,6 +8,7 @@ import SwiftUI
 struct RecordingsList: View {
     let library: RecordingLibrary
     @State private var selection = Set<Recording.ID>()
+    @Environment(\.openWindow) private var openWindow
 
     var body: some View {
         List(library.recordings, selection: $selection) { recording in
@@ -17,11 +18,21 @@ struct RecordingsList: View {
         }
         .contextMenu(forSelectionType: Recording.ID.self) { urls in
             if !urls.isEmpty {
-                Button("Open") { library.open(urls) }
+                Button("Open in Editor") { openEditors(urls) }
+                Button("Play Video") { library.playVideo(urls) }
+                Divider()
                 Button("Show in Finder") { library.showInFinder(urls) }
             }
         } primaryAction: { urls in
-            library.open(urls)
+            openEditors(urls)
+        }
+    }
+}
+
+extension RecordingsList {
+    private func openEditors(_ projectURLs: Set<URL>) {
+        for url in projectURLs {
+            openWindow(id: EditorView.windowID, value: url)
         }
     }
 }

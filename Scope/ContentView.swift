@@ -16,6 +16,8 @@ struct ContentView: View {
     @State private var systemAudioMeter = AudioMeter()
     @Environment(Recorder.self) private var recorder
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.openWindow) private var openWindow
+    private let opener = ProjectOpener.shared
 
     var body: some View {
         VStack(spacing: 0) {
@@ -83,6 +85,11 @@ struct ContentView: View {
         }
         .onChange(of: recorder.lastProject) {
             Task { await library.reload() }
+        }
+        .onChange(of: opener.pending, initial: true) {
+            for project in opener.takePending() {
+                openWindow(id: EditorView.windowID, value: project.url)
+            }
         }
         .task {
             await library.reload()

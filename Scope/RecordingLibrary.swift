@@ -53,8 +53,8 @@ final class RecordingLibrary {
         recordings = loaded.sorted { $0.date > $1.date }
     }
 
-    /// Opens each project's video in the default player until Scope has its own editor.
-    func open(_ projectURLs: some Collection<URL>) {
+    /// Plays each project's raw video in the default player, e.g. QuickTime.
+    func playVideo(_ projectURLs: some Collection<URL>) {
         for url in projectURLs {
             NSWorkspace.shared.open(ScopeProject(url: url).videoURL)
         }
