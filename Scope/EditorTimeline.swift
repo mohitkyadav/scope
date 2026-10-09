@@ -29,13 +29,14 @@ struct EditorTimeline: View {
     let model: EditorModel
     /// 1 fits the whole video in the visible width; higher values zoom in.
     @State private var magnification = 1.0
+    @Environment(\.undoManager) private var undoManager
 
     static let headerWidth: CGFloat = 150
     static let rulerHeight: CGFloat = 24
 
     var body: some View {
         VStack(spacing: 0) {
-            TimelineToolbar(model: model, magnification: $magnification)
+            TimelineToolbar(model: model, magnification: $magnification, undoManager: undoManager)
 
             Divider()
 
@@ -49,7 +50,7 @@ struct EditorTimeline: View {
                     let fitted = (geometry.size.width - 24) / max(model.duration, 0.1)
                     let pointsPerSecond = fitted * magnification
                     ScrollView(.horizontal) {
-                        TimelineTracks(model: model, rows: rows, pointsPerSecond: pointsPerSecond)
+                        TimelineTracks(model: model, rows: rows, pointsPerSecond: pointsPerSecond, undoManager: undoManager)
                             .frame(width: max(model.duration * pointsPerSecond + 24, geometry.size.width), alignment: .leading)
                     }
                     .scrollIndicators(magnification > 1 ? .visible : .hidden)
@@ -75,6 +76,7 @@ struct EditorTimeline: View {
 private struct TimelineToolbar: View {
     let model: EditorModel
     @Binding var magnification: Double
+    let undoManager: UndoManager?
 
     var body: some View {
         HStack(spacing: 12) {
@@ -90,6 +92,25 @@ private struct TimelineToolbar: View {
             Text("\(model.currentTime.timecodeString) / \(model.duration.timecodeString)")
                 .monospacedDigit()
                 .foregroundStyle(.secondary)
+
+            Divider().frame(height: 18)
+
+            Button {
+                model.splitClip(at: model.currentTime, undoManager: undoManager)
+            } label: {
+                Label("Split", systemImage: "scissors")
+            }
+            .keyboardShortcut("b", modifiers: .command)
+            .help("Split the clip at the playhead (⌘B)")
+
+            Button(role: .destructive) {
+                model.deleteSelection(undoManager: undoManager)
+            } label: {
+                Label("Delete", systemImage: "trash")
+            }
+            .keyboardShortcut(.delete, modifiers: [])
+            .disabled(!model.canDeleteSelection)
+            .help("Delete the selected item (Delete)")
 
             Spacer()
 
@@ -153,6 +174,7 @@ private struct TimelineTracks: View {
     let model: EditorModel
     let rows: [TimelineRow]
     let pointsPerSecond: Double
+    let undoManager: UndoManager?
 
     var body: some View {
         ZStack(alignment: .topLeading) {
@@ -196,10 +218,14 @@ private struct TimelineTracks: View {
         switch row {
         case .video:
             ForEach(Array(model.edits.clips.enumerated()), id: \.element.id) { index, clip in
-                TimelineBlock(
+                EditableBlock(
                     title: clip.speed == 1 ? nil : String(format: "%g×", clip.speed),
                     color: .accentColor,
-                    isSelected: model.selection == .clip(clip.id)
+                    isSelected: model.selection == .clip(clip.id),
+                    canMove: false,
+                    onSelect: { model.selection = .clip(clip.id) },
+                    onDrag: { edit, points in model.dragClip(clip.id, edit, by: points / pointsPerSecond) },
+                    onDragEnd: { _ in model.endGesture("Trim Clip", undoManager: undoManager) }
                 )
                 .frame(width: max(clip.duration * pointsPerSecond, 2))
                 .offset(x: map.outputStarts[index] * pointsPerSecond)
@@ -247,6 +273,50 @@ private struct TimelineTracks: View {
                     .offset(x: clip.offset * pointsPerSecond)
             }
         }
+    }
+}
+
+/// A timeline item that can be selected, trimmed from either edge and, if `canMove`, dragged along.
+/// Drags report how far they've gone in points since they began.
+struct EditableBlock: View {
+    let title: String?
+    let color: Color
+    let isSelected: Bool
+    let canMove: Bool
+    let onSelect: () -> Void
+    let onDrag: (BlockEdit, Double) -> Void
+    let onDragEnd: (BlockEdit) -> Void
+
+    @State private var isHovering = false
+
+    var body: some View {
+        TimelineBlock(title: title, color: color, isSelected: isSelected)
+            .contentShape(Rectangle())
+            .onTapGesture(perform: onSelect)
+            .gesture(canMove ? drag(.move) : nil)
+            .overlay(alignment: .leading) { handle(.trimStart) }
+            .overlay(alignment: .trailing) { handle(.trimEnd) }
+            .onHover { isHovering = $0 }
+    }
+
+    private func handle(_ edit: BlockEdit) -> some View {
+        RoundedRectangle(cornerRadius: 2)
+            .fill(Color.white.opacity(isHovering || isSelected ? 0.9 : 0))
+            .frame(width: 4)
+            .padding(.vertical, 8)
+            .frame(width: 10)
+            .contentShape(Rectangle())
+            .pointerStyle(.columnResize)
+            .gesture(drag(edit))
+    }
+
+    private func drag(_ edit: BlockEdit) -> some Gesture {
+        DragGesture(minimumDistance: 1)
+            .onChanged { drag in
+                onSelect()
+                onDrag(edit, drag.translation.width)
+            }
+            .onEnded { _ in onDragEnd(edit) }
     }
 }
 

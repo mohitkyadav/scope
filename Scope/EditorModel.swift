@@ -8,6 +8,13 @@ import Combine
 import CoreImage
 import Observation
 
+/// Which part of a timeline item a drag changes.
+enum BlockEdit {
+    case move
+    case trimStart
+    case trimEnd
+}
+
 /// What's selected on the timeline.
 enum TimelineSelection: Equatable {
     case clip(UUID)
@@ -256,6 +263,75 @@ final class EditorModel {
             || new.webcamFileName != old.webcamFileName
             || new.webcamOffset != old.webcamOffset
             || placements(new.importedAudio) != placements(old.importedAudio)
+    }
+
+    // MARK: - Clips
+
+    /// The shortest a clip can be trimmed to, in seconds of the recording.
+    private static let minimumClipLength = 0.1
+
+    /// Splits the clip under `time` (in the final video) in two.
+    func splitClip(at time: TimeInterval, undoManager: UndoManager?) {
+        let map = timeMap
+        guard let index = map.clipIndex(at: time) else { return }
+        let clip = edits.clips[index]
+        let cut = map.sourceTime(at: time)
+        guard cut - clip.start >= Self.minimumClipLength, clip.end - cut >= Self.minimumClipLength else { return }
+
+        perform("Split Clip", undoManager: undoManager) { edits in
+            var second = clip
+            second.id = UUID()
+            second.start = cut
+            edits.clips[index].end = cut
+            edits.clips.insert(second, at: index + 1)
+        }
+    }
+
+    /// Trims a clip during a drag. `seconds` is how far the edge has been dragged along the final
+    /// video. Edges stop at the neighbouring clips and the ends of the recording, so dragging back
+    /// out restores what was trimmed.
+    func dragClip(_ id: UUID, _ edit: BlockEdit, by seconds: Double) {
+        beginGesture()
+        guard let original = gestureStart?.clips.first(where: { $0.id == id }) else { return }
+        update { edits in
+            guard let index = edits.clips.firstIndex(where: { $0.id == id }) else { return }
+            let delta = seconds * original.speed
+            switch edit {
+            case .trimStart:
+                let lowest = index > 0 ? edits.clips[index - 1].end : 0
+                edits.clips[index].start = min(max(original.start + delta, lowest), original.end - Self.minimumClipLength)
+            case .trimEnd:
+                let highest = index + 1 < edits.clips.count ? edits.clips[index + 1].start : sourceDuration
+                edits.clips[index].end = max(min(original.end + delta, highest), original.start + Self.minimumClipLength)
+            case .move:
+                break
+            }
+        }
+    }
+
+    /// Deletes whatever is selected. The last clip can't be deleted.
+    func deleteSelection(undoManager: UndoManager?) {
+        guard let selection else { return }
+        switch selection {
+        case .clip(let id):
+            guard edits.clips.count > 1 else { return }
+            perform("Delete Clip", undoManager: undoManager) { $0.clips.removeAll { $0.id == id } }
+        case .zoom(let id):
+            perform("Delete Zoom", undoManager: undoManager) { $0.zooms.removeAll { $0.id == id } }
+        case .note(let id):
+            perform("Delete Note", undoManager: undoManager) { $0.notes.removeAll { $0.id == id } }
+        case .audio(let id):
+            perform("Remove Audio", undoManager: undoManager) { $0.importedAudio.removeAll { $0.id == id } }
+        }
+        self.selection = nil
+    }
+
+    var canDeleteSelection: Bool {
+        guard let selection else { return false }
+        if case .clip = selection {
+            return edits.clips.count > 1
+        }
+        return true
     }
 
     // MARK: - Rebuilding playback
