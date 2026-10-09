@@ -7,6 +7,7 @@ import SwiftUI
 
 @main
 struct ScopeApp: App {
+    @NSApplicationDelegateAdaptor private var appDelegate: AppDelegate
     @State private var recorder = Recorder()
 
     var body: some Scene {

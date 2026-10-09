@@ -12,7 +12,7 @@ struct RecordingsList: View {
     var body: some View {
         List(library.recordings, selection: $selection) { recording in
             RecordingRow(recording: recording) {
-                library.showInFinder([recording.url])
+                library.showInFinder([recording.project.url])
             }
         }
         .contextMenu(forSelectionType: Recording.ID.self) { urls in

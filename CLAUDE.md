@@ -13,7 +13,7 @@ Native macOS screen recorder for making polished product demos and tutorials.
 
 - `Scope/` is a file-system-synchronized group: any file added here is part of the target automatically. Do not hand-edit `project.pbxproj` to add sources.
 - `Scope/Assets.xcassets` holds the app icon and accent color.
-- Recordings are always saved straight into `~/Downloads` as `Scope <timestamp>.mp4` (sandbox: Downloads read-write). The recordings list only shows files with that prefix.
+- Recordings are always saved straight into `~/Downloads` as `.scope` project packages (`Scope <timestamp>.scope/`, sandbox: Downloads read-write). A package holds `screen.mp4` and `cursor.json` now, and later the webcam, imported audio and `project.json` edits. Exports go next to it as plain files. The type is declared in `Scope/Info.plist`.
 
 ## Build
 

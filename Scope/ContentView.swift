@@ -81,7 +81,7 @@ struct ContentView: View {
                 }
             }
         }
-        .onChange(of: recorder.lastRecordingURL) {
+        .onChange(of: recorder.lastProject) {
             Task { await library.reload() }
         }
         .task {
@@ -166,20 +166,14 @@ struct ContentView: View {
         switch recorder.state {
         case .idle:
             guard let filter = sources.selectedFilter, let area = sources.selectedArea else { return }
-            do {
-                let outputURL = try RecordingLibrary.newRecordingURL()
-                await recorder.start(
-                    filter: filter,
-                    area: area,
-                    microphoneID: audio.microphoneToRecord?.id,
-                    systemAudio: audio.systemAudioEnabled,
-                    outputURL: outputURL,
-                    cursorURL: outputURL.deletingPathExtension().appendingPathExtension("cursor.json"),
-                    countdownScreen: sources.selectedScreen
-                )
-            } catch {
-                recorder.errorMessage = error.localizedDescription
-            }
+            await recorder.start(
+                filter: filter,
+                area: area,
+                microphoneID: audio.microphoneToRecord?.id,
+                systemAudio: audio.systemAudioEnabled,
+                project: RecordingLibrary.newProject(),
+                countdownScreen: sources.selectedScreen
+            )
         case .countingDown:
             recorder.cancelCountdown()
         case .recording:

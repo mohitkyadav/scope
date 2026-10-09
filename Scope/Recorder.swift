@@ -22,17 +22,16 @@ final class Recorder: NSObject {
 
     private(set) var state: State = .idle
     private(set) var elapsed: TimeInterval = 0
-    private(set) var lastRecordingURL: URL?
+    private(set) var lastProject: ScopeProject?
     var errorMessage: String?
 
     private var stream: SCStream?
     private var recordingOutput: SCRecordingOutput?
-    private var outputURL: URL?
+    private var project: ScopeProject?
     private var timerTask: Task<Void, Never>?
     private var countdownTask: Task<Bool, Never>?
     private var stopHotKey: GlobalHotKey?
     private var cursorRecorder: CursorRecorder?
-    private var cursorURL: URL?
     /// `systemUptime` when capture started, and when the first video frame was written.
     private var captureStartTime: TimeInterval = 0
     private var videoStartTime: TimeInterval?
@@ -42,14 +41,13 @@ final class Recorder: NSObject {
     /// `microphoneID` is the capture device to record alongside the screen, or `nil` for no microphone.
     /// `systemAudio` records the sound the computer plays (from every app for a display, or from the
     /// window's app for a window), but never Scope's own.
-    /// Cursor movement and clicks inside `area` are saved to `cursorURL`.
+    /// Cursor movement and clicks inside `area` are saved into the project too.
     func start(
         filter: SCContentFilter,
         area: CaptureArea,
         microphoneID: String?,
         systemAudio: Bool,
-        outputURL: URL,
-        cursorURL: URL,
+        project: ScopeProject,
         countdownScreen: NSScreen?
     ) async {
         guard state == .idle else { return }
@@ -87,7 +85,7 @@ final class Recorder: NSObject {
         }
 
         let outputConfiguration = SCRecordingOutputConfiguration()
-        outputConfiguration.outputURL = outputURL
+        outputConfiguration.outputURL = project.videoURL
         outputConfiguration.outputFileType = .mp4
         outputConfiguration.videoCodecType = .h264
 
@@ -101,20 +99,21 @@ final class Recorder: NSObject {
         videoStartTime = nil
 
         do {
+            try project.createFolder()
             try stream.addRecordingOutput(recordingOutput)
             try await stream.startCapture()
         } catch {
             _ = cursorRecorder.stop(videoStart: captureStartTime)
+            try? FileManager.default.removeItem(at: project.url)
             errorMessage = error.localizedDescription
             state = .idle
             return
         }
 
         self.cursorRecorder = cursorRecorder
-        self.cursorURL = cursorURL
         self.stream = stream
         self.recordingOutput = recordingOutput
-        self.outputURL = outputURL
+        self.project = project
         state = .recording
         startTimer()
         stopHotKey = GlobalHotKey(keyCode: kVK_ANSI_2, modifiers: cmdKey | shiftKey) { [weak self] in
@@ -163,17 +162,16 @@ final class Recorder: NSObject {
             errorMessage = error.localizedDescription
         }
 
-        if let cursorRecorder, let cursorURL {
+        if let cursorRecorder, let project {
             let track = cursorRecorder.stop(videoStart: videoStartTime ?? captureStartTime)
             do {
-                try track.write(to: cursorURL)
+                try track.write(to: project.cursorURL)
             } catch {
                 errorMessage = "The cursor data couldn't be saved: \(error.localizedDescription)"
             }
         }
         cursorRecorder = nil
-        cursorURL = nil
-        lastRecordingURL = outputURL
+        lastProject = project
 
         timerTask?.cancel()
         timerTask = nil
@@ -181,7 +179,7 @@ final class Recorder: NSObject {
         stopHotKey = nil
         stream = nil
         recordingOutput = nil
-        outputURL = nil
+        project = nil
         state = .idle
     }
 }
