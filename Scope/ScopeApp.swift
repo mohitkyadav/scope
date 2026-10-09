@@ -14,5 +14,17 @@ struct ScopeApp: App {
             ContentView()
                 .environment(recorder)
         }
+
+        // Only in the menu bar while a recording is running.
+        MenuBarExtra(isInserted: .constant(recorder.isRecording || recorder.state == .stopping)) {
+            Button("Stop Recording") {
+                Task { await recorder.stop() }
+            }
+            .keyboardShortcut("2", modifiers: [.command, .shift])
+        } label: {
+            Label(recorder.elapsed.clockString, systemImage: "record.circle")
+                .labelStyle(.titleAndIcon)
+                .monospacedDigit()
+        }
     }
 }

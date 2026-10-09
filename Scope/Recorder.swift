@@ -3,7 +3,8 @@
 //  Scope
 //
 
-import Foundation
+import AppKit
+import Carbon.HIToolbox
 import Observation
 import ScreenCaptureKit
 
@@ -16,6 +17,9 @@ final class Recorder: NSObject {
         case stopping
     }
 
+    /// Stops a recording from any app. Only registered while recording.
+    static let stopShortcut = "⌘⇧2"
+
     private(set) var state: State = .idle
     private(set) var elapsed: TimeInterval = 0
     private(set) var lastRecordingURL: URL?
@@ -25,11 +29,25 @@ final class Recorder: NSObject {
     private var recordingOutput: SCRecordingOutput?
     private var outputURL: URL?
     private var timerTask: Task<Void, Never>?
+    private var countdownTask: Task<Bool, Never>?
+    private var stopHotKey: GlobalHotKey?
 
     var isRecording: Bool { state == .recording }
 
-    func start(filter: SCContentFilter, outputURL: URL) async {
+    func start(filter: SCContentFilter, outputURL: URL, countdownScreen: NSScreen?) async {
         guard state == .idle else { return }
+
+        if let countdownScreen {
+            state = .countingDown
+            let countdownTask = Task { await Countdown.run(on: countdownScreen) }
+            self.countdownTask = countdownTask
+            let finished = await countdownTask.value
+            self.countdownTask = nil
+            guard finished else {
+                state = .idle
+                return
+            }
+        }
 
         let configuration = SCStreamConfiguration()
         configuration.width = Int(filter.contentRect.width * CGFloat(filter.pointPixelScale))
@@ -51,6 +69,7 @@ final class Recorder: NSObject {
             try await stream.startCapture()
         } catch {
             errorMessage = error.localizedDescription
+            state = .idle
             return
         }
 
@@ -59,6 +78,13 @@ final class Recorder: NSObject {
         self.outputURL = outputURL
         state = .recording
         startTimer()
+        stopHotKey = GlobalHotKey(keyCode: kVK_ANSI_2, modifiers: cmdKey | shiftKey) { [weak self] in
+            Task { await self?.stop() }
+        }
+    }
+
+    func cancelCountdown() {
+        countdownTask?.cancel()
     }
 
     func stop() async {
@@ -69,8 +95,15 @@ final class Recorder: NSObject {
             try await stream.stopCapture()
         } catch {
             finish(error: error)
+            return
         }
+
         // The file is finalised once the recording output calls `recordingOutputDidFinishRecording`.
+        // If that never arrives, don't leave the app stuck in the stopping state.
+        try? await Task.sleep(for: .seconds(5))
+        if state == .stopping, self.stream === stream {
+            finish()
+        }
     }
 
     private func startTimer() {
@@ -94,6 +127,8 @@ final class Recorder: NSObject {
 
         timerTask?.cancel()
         timerTask = nil
+        stopHotKey?.unregister()
+        stopHotKey = nil
         stream = nil
         recordingOutput = nil
         outputURL = nil

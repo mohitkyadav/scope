@@ -71,6 +71,20 @@ final class CaptureSources {
         }
     }
 
+    /// The screen the countdown appears on: the chosen display, or the one the chosen window is on.
+    var selectedScreen: NSScreen? {
+        switch kind {
+        case .display:
+            return NSScreen.screens.first { $0.displayID == selectedDisplayID }
+        case .window:
+            guard let frame = selectedWindow?.scWindow.frame else { return nil }
+            let center = CGPoint(x: frame.midX, y: frame.midY)
+            return NSScreen.screens.first { screen in
+                screen.displayID.map { CGDisplayBounds($0).contains(center) } ?? false
+            } ?? NSScreen.main
+        }
+    }
+
     func load() async {
         do {
             let content = try await SCShareableContent.excludingDesktopWindows(true, onScreenWindowsOnly: true)

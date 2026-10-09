@@ -46,7 +46,13 @@ struct ContentView: View {
 
                 Spacer(minLength: 0)
 
-                RecordButton(isRecording: recorder.isRecording, elapsed: recorder.elapsed) {
+                if recorder.isRecording {
+                    Text("Press \(Recorder.stopShortcut) to stop from any app")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                }
+
+                RecordButton(state: recorder.state, elapsed: recorder.elapsed) {
                     Task { await toggleRecording() }
                 }
                 .disabled(!canRecord)
@@ -97,22 +103,30 @@ struct ContentView: View {
     private var canRecord: Bool {
         switch recorder.state {
         case .idle: permission.isGranted && sources.hasSelection
-        case .recording: true
-        case .countingDown, .stopping: false
+        case .countingDown, .recording: true
+        case .stopping: false
         }
     }
 
     private func toggleRecording() async {
-        if recorder.isRecording {
+        switch recorder.state {
+        case .idle:
+            guard let filter = sources.selectedFilter else { return }
+            do {
+                await recorder.start(
+                    filter: filter,
+                    outputURL: try RecordingLibrary.newRecordingURL(),
+                    countdownScreen: sources.selectedScreen
+                )
+            } catch {
+                recorder.errorMessage = error.localizedDescription
+            }
+        case .countingDown:
+            recorder.cancelCountdown()
+        case .recording:
             await recorder.stop()
-            return
-        }
-
-        guard let filter = sources.selectedFilter else { return }
-        do {
-            await recorder.start(filter: filter, outputURL: try RecordingLibrary.newRecordingURL())
-        } catch {
-            recorder.errorMessage = error.localizedDescription
+        case .stopping:
+            break
         }
     }
 }
