@@ -1,0 +1,79 @@
+{
+  "groups": [
+    {
+      "layers": [
+        {
+          "image-name": "cursor.svg",
+          "name": "cursor",
+          "glass": true
+        }
+      ],
+      "name": "Cursor",
+      "shadow": {
+        "kind": "neutral",
+        "opacity": 0.6
+      },
+      "specular": true
+    },
+    {
+      "layers": [
+        {
+          "image-name": "lens.svg",
+          "name": "lens",
+          "glass": true
+        }
+      ],
+      "name": "Lens",
+      "shadow": {
+        "kind": "neutral",
+        "opacity": 0.6
+      },
+      "specular": true,
+      "translucency": {
+        "enabled": true,
+        "value": 0.4
+      }
+    },
+    {
+      "layers": [
+        {
+          "image-name": "rings.svg",
+          "name": "rings",
+          "glass": false
+        }
+      ],
+      "name": "Rings",
+      "shadow": {
+        "kind": "layer-color",
+        "opacity": 0.3
+      },
+      "specular": false
+    },
+    {
+      "layers": [
+        {
+          "image-name": "crosshair.svg",
+          "name": "crosshair",
+          "glass": false
+        }
+      ],
+      "name": "Crosshair",
+      "shadow": {
+        "kind": "neutral",
+        "opacity": 0
+      },
+      "specular": false
+    }
+  ],
+  "fill": {
+    "linear-gradient": [
+      "srgb:0.13725,0.16471,0.23137,1.00000",
+      "srgb:0.05882,0.06667,0.10196,1.00000"
+    ]
+  },
+  "supported-platforms": {
+    "squares": [
+      "macOS"
+    ]
+  }
+}
