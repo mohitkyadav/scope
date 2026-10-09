@@ -8,7 +8,7 @@ import SwiftUI
 
 struct ContentView: View {
     @State private var permission = ScreenRecordingPermission()
-    @State private var displayList = DisplayList()
+    @State private var sources = CaptureSources()
     @State private var library = RecordingLibrary()
     @Environment(Recorder.self) private var recorder
     @Environment(\.scenePhase) private var scenePhase
@@ -40,7 +40,7 @@ struct ContentView: View {
 
             HStack(spacing: 16) {
                 if permission.isGranted {
-                    DisplayPicker(displayList: displayList)
+                    SourcePicker(sources: sources)
                         .disabled(recorder.state != .idle)
                 }
 
@@ -53,11 +53,15 @@ struct ContentView: View {
             }
             .padding(20)
         }
-        .frame(minWidth: 560, minHeight: 360)
+        .frame(minWidth: 640, minHeight: 360)
         .onChange(of: scenePhase) {
             if scenePhase == .active {
                 permission.refresh()
                 Task { await library.reload() }
+                // Windows come and go while Scope is in the background.
+                if permission.isGranted {
+                    Task { await sources.load() }
+                }
             }
         }
         .onChange(of: recorder.lastRecordingURL) {
@@ -68,7 +72,7 @@ struct ContentView: View {
         }
         .task(id: permission.isGranted) {
             guard permission.isGranted else { return }
-            await displayList.load()
+            await sources.load()
         }
         .alert(
             "Recording failed",
@@ -85,14 +89,14 @@ struct ContentView: View {
             // Reload when a monitor is plugged in, unplugged or changes resolution.
             for await _ in NotificationCenter.default.notifications(named: NSApplication.didChangeScreenParametersNotification) {
                 guard permission.isGranted else { continue }
-                await displayList.load()
+                await sources.load()
             }
         }
     }
 
     private var canRecord: Bool {
         switch recorder.state {
-        case .idle: permission.isGranted && displayList.selected != nil
+        case .idle: permission.isGranted && sources.hasSelection
         case .recording: true
         case .countingDown, .stopping: false
         }
@@ -104,7 +108,7 @@ struct ContentView: View {
             return
         }
 
-        guard let filter = displayList.selectedFilter else { return }
+        guard let filter = sources.selectedFilter else { return }
         do {
             await recorder.start(filter: filter, outputURL: try RecordingLibrary.newRecordingURL())
         } catch {
