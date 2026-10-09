@@ -16,8 +16,19 @@ nonisolated struct CursorPath: Sendable {
 
     /// `smoothing` runs from 0 (the recorded path as is) to 1 (the smoothest).
     init(track: CursorTrack, smoothing: Double = 0) {
+        self.init(track: track, sigma: smoothing * 0.2, anchoredToClicks: true)
+    }
+
+    /// A much smoother path for the zoom camera to follow, so it glides after the cursor
+    /// instead of copying every movement.
+    static func camera(for track: CursorTrack) -> CursorPath {
+        CursorPath(track: track, sigma: 0.5, anchoredToClicks: false)
+    }
+
+    /// `sigma` is the blur's width in seconds.
+    private init(track: CursorTrack, sigma: Double, anchoredToClicks: Bool) {
         let raw = Self.resample(track)
-        points = Self.smooth(raw, amount: smoothing, clicks: track.clicks)
+        points = Self.smooth(raw, sigma: sigma, clicks: anchoredToClicks ? track.clicks : [])
         clicks = track.clicks
     }
 
@@ -66,11 +77,11 @@ nonisolated struct CursorPath: Sendable {
         return points
     }
 
-    /// Averages each position with its neighbours in time (a Gaussian blur over up to 0.2 s each way),
-    /// which takes out jitter and small wobbles. Around each click the path eases back to the
-    /// recorded one, so clicks still land exactly where they happened.
-    private static func smooth(_ raw: [CGPoint], amount: Double, clicks: [CursorTrack.Click]) -> [CGPoint] {
-        let sigma = amount * 0.2 * rate
+    /// Averages each position with its neighbours in time (a Gaussian blur `sigma` seconds wide),
+    /// which takes out jitter and small wobbles. Around each of `clicks` the path eases back to the
+    /// recorded one, so they still land exactly where they happened.
+    private static func smooth(_ raw: [CGPoint], sigma: Double, clicks: [CursorTrack.Click]) -> [CGPoint] {
+        let sigma = sigma * rate
         guard sigma >= 0.5, raw.count > 1 else { return raw }
 
         let radius = Int((sigma * 3).rounded(.up))

@@ -14,6 +14,13 @@ nonisolated struct EditorSettings: Equatable, Sendable {
     /// Show a ripple where each click happened.
     var showClicks = true
 
+    /// Zoom in on the zoom segments.
+    var autoZoom = true
+    /// How far to zoom in, e.g. 2 shows a quarter of the screen.
+    var zoomLevel = 2.0
+    /// Seconds spent zooming in or out.
+    var zoomTransition = 0.7
+
     /// What the recording sits on. With `.none` the video fills the frame and the settings below do nothing.
     var background = Background.none
     /// Space around the recording, as a fraction of the frame's shorter side.

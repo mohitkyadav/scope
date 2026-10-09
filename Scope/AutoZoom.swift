@@ -57,4 +57,21 @@ nonisolated enum AutoZoom {
         }
         return segments
     }
+
+    /// How far zoomed in the view is at `time`, from 0 (not at all) to 1 (fully), easing in over
+    /// `transition` seconds before each segment and out over the same time after it.
+    static func amount(at time: Double, segments: [ZoomSegment], transition: Double) -> Double {
+        let transition = max(transition, 0.01)
+        return segments.reduce(0) { amount, segment in
+            let zoomingIn = ease((time - (segment.start - transition)) / transition)
+            let zoomingOut = ease((segment.end + transition - time) / transition)
+            return max(amount, min(zoomingIn, zoomingOut))
+        }
+    }
+
+    /// Slow at both ends, fast in the middle.
+    private static func ease(_ progress: Double) -> Double {
+        let x = min(max(progress, 0), 1)
+        return x < 0.5 ? 4 * x * x * x : 1 - pow(-2 * x + 2, 3) / 2
+    }
 }

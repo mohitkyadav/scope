@@ -32,6 +32,7 @@ final class EditorModel {
     private var videoSize: CGSize = .zero
     private var cursorTrack: CursorTrack?
     private var cursorPath: CursorPath?
+    private var cameraPath: CursorPath?
     /// The smoothing `cursorPath` was built with, so it's only rebuilt when that changes.
     private var cursorPathSmoothing: Double?
     private var renderTask: Task<Void, Never>?
@@ -67,6 +68,7 @@ final class EditorModel {
                 pixelsPerPoint = videoSize.width / track.areaWidth
             }
             zoomSegments = AutoZoom.segments(for: track.clicks, duration: duration)
+            cameraPath = await Task.detached { CursorPath.camera(for: track) }.value
         }
         sprite = CursorSprite.arrow()
         firstFrame = await Self.firstFrame(of: asset)
@@ -140,6 +142,8 @@ final class EditorModel {
             sprite: sprite,
             pixelsPerPoint: pixelsPerPoint,
             settings: settings,
+            zoomSegments: zoomSegments,
+            cameraPath: cameraPath,
             firstFrame: firstFrame
         )
         do {

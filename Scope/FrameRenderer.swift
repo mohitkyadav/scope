@@ -6,8 +6,9 @@
 import CoreImage
 import CoreImage.CIFilterBuiltins
 
-/// Draws one finished frame of a project: the recorded video with Scope's cursor on top,
-/// optionally placed on a background with padding, rounded corners and a shadow.
+/// Draws one finished frame of a project: the recorded video with Scope's cursor on top, zoomed
+/// in where there are zoom segments, and optionally placed on a background with padding, rounded
+/// corners and a shadow.
 ///
 /// The same renderer feeds the editor's preview and, later, export, so both always match.
 /// It's an immutable value that's safe to use from Core Image's rendering threads; the editor
@@ -19,6 +20,9 @@ nonisolated struct FrameRenderer: @unchecked Sendable {
     /// Video pixels per screen point at recording time, e.g. 2 on a Retina display.
     let pixelsPerPoint: CGFloat
     let settings: EditorSettings
+    let zoomSegments: [ZoomSegment]
+    /// The smoothed cursor path the zoomed-in view follows.
+    let cameraPath: CursorPath?
     /// Shown before the recording's first video frame arrives, instead of a black frame.
     let firstFrame: CIImage?
 
@@ -41,7 +45,30 @@ nonisolated struct FrameRenderer: @unchecked Sendable {
         if let cursor = cursorLayer(at: time) {
             frame = cursor.composited(over: frame)
         }
-        return placeOnBackground(frame.cropped(to: videoRect))
+        return placeOnBackground(zoom(frame.cropped(to: videoRect), at: time))
+    }
+
+    /// Scales the frame up around the camera's focus point. The focus is kept far enough from the
+    /// edges that the zoomed view never shows past the edge of the recording.
+    private func zoom(_ frame: CIImage, at time: Double) -> CIImage {
+        guard settings.autoZoom, settings.zoomLevel > 1 else { return frame }
+        let amount = AutoZoom.amount(at: time, segments: zoomSegments, transition: settings.zoomTransition)
+        guard amount > 0.001 else { return frame }
+
+        let scale = 1 + (settings.zoomLevel - 1) * amount
+        let visible = CGSize(width: videoSize.width / scale, height: videoSize.height / scale)
+        let focus = cameraPath?.position(at: time) ?? CGPoint(x: 0.5, y: 0.5)
+        let center = CGPoint(
+            x: min(max(focus.x * videoSize.width, visible.width / 2), videoSize.width - visible.width / 2),
+            y: min(max((1 - focus.y) * videoSize.height, visible.height / 2), videoSize.height - visible.height / 2)
+        )
+
+        let transform = CGAffineTransform(
+            translationX: -(center.x - visible.width / 2),
+            y: -(center.y - visible.height / 2)
+        )
+        .concatenating(CGAffineTransform(scaleX: scale, y: scale))
+        return frame.transformed(by: transform).cropped(to: CGRect(origin: .zero, size: videoSize))
     }
 
     /// Shrinks the video into the padded area of the canvas, rounds its corners and puts it
