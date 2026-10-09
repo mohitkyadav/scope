@@ -394,6 +394,84 @@ final class EditorModel {
         }
     }
 
+    // MARK: - Audio
+
+    /// Volume and mute for a timeline audio row: one of the recording's own tracks or an imported file.
+    func mix(for row: TimelineRow) -> TrackMix? {
+        switch row {
+        case .recordedAudio(let index): edits.recordedAudio[safe: index]
+        case .importedAudio(let id): edits.importedAudio.first { $0.id == id }?.mix
+        default: nil
+        }
+    }
+
+    /// Changes a row's volume or mute. Pass `undoManager` for a single change, or leave it out
+    /// while a volume slider is being dragged and call `endGesture` when it's let go.
+    func setMix(_ mix: TrackMix, for row: TimelineRow, actionName: String = "Change Volume", undoManager: UndoManager? = nil, isDragging: Bool = false) {
+        let change: (inout TimelineEdits) -> Void = { edits in
+            switch row {
+            case .recordedAudio(let index) where edits.recordedAudio.indices.contains(index):
+                edits.recordedAudio[index] = mix
+            case .importedAudio(let id):
+                if let index = edits.importedAudio.firstIndex(where: { $0.id == id }) {
+                    edits.importedAudio[index].mix = mix
+                }
+            default:
+                break
+            }
+        }
+        if isDragging {
+            update(change)
+        } else {
+            perform(actionName, undoManager: undoManager, change)
+        }
+    }
+
+    /// Copies an audio file into the project and adds it at the playhead.
+    func importAudio(from url: URL, undoManager: UndoManager?) async {
+        let accessing = url.startAccessingSecurityScopedResource()
+        defer {
+            if accessing {
+                url.stopAccessingSecurityScopedResource()
+            }
+        }
+
+        let fileName = "\(UUID().uuidString).\(url.pathExtension.isEmpty ? "m4a" : url.pathExtension)"
+        let destination = project.audioFolderURL.appending(path: fileName)
+        do {
+            try FileManager.default.createDirectory(at: project.audioFolderURL, withIntermediateDirectories: true)
+            try FileManager.default.copyItem(at: url, to: destination)
+            let asset = AVURLAsset(url: destination)
+            guard try await !asset.loadTracks(withMediaType: .audio).isEmpty else {
+                try? FileManager.default.removeItem(at: destination)
+                errorMessage = "“\(url.lastPathComponent)” has no audio."
+                return
+            }
+            let clip = AudioClip(
+                fileName: fileName,
+                name: url.deletingPathExtension().lastPathComponent,
+                duration: try await asset.load(.duration).seconds,
+                offset: currentTime
+            )
+            perform("Add Audio", undoManager: undoManager) { $0.importedAudio.append(clip) }
+            selection = .audio(clip.id)
+        } catch {
+            errorMessage = "The audio couldn't be added: \(error.localizedDescription)"
+        }
+    }
+
+    /// Slides an imported audio file along the final video during a drag. It can start before the
+    /// video, which skips its beginning.
+    func dragAudio(_ id: UUID, by seconds: Double) {
+        beginGesture()
+        guard let original = gestureStart?.importedAudio.first(where: { $0.id == id }) else { return }
+        let end = duration
+        update { edits in
+            guard let index = edits.importedAudio.firstIndex(where: { $0.id == id }) else { return }
+            edits.importedAudio[index].offset = min(max(original.offset + seconds, -original.duration + 0.5), end - 0.5)
+        }
+    }
+
     // MARK: - Rebuilding playback
 
     private func scheduleRebuild() {

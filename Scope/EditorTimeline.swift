@@ -4,6 +4,7 @@
 //
 
 import SwiftUI
+import UniformTypeIdentifiers
 
 /// The rows of the timeline, top to bottom.
 enum TimelineRow: Hashable {
@@ -31,7 +32,7 @@ struct EditorTimeline: View {
     @State private var magnification = 1.0
     @Environment(\.undoManager) private var undoManager
 
-    static let headerWidth: CGFloat = 150
+    static let headerWidth: CGFloat = 175
     static let rulerHeight: CGFloat = 24
 
     var body: some View {
@@ -41,7 +42,7 @@ struct EditorTimeline: View {
             Divider()
 
             HStack(alignment: .top, spacing: 0) {
-                TimelineHeaders(model: model, rows: rows)
+                TimelineHeaders(model: model, rows: rows, undoManager: undoManager)
                     .frame(width: Self.headerWidth)
 
                 Divider()
@@ -77,6 +78,7 @@ private struct TimelineToolbar: View {
     let model: EditorModel
     @Binding var magnification: Double
     let undoManager: UndoManager?
+    @State private var isImportingAudio = false
 
     var body: some View {
         HStack(spacing: 12) {
@@ -140,6 +142,18 @@ private struct TimelineToolbar: View {
             }
             .help("Add a zoom at the playhead")
 
+            Button {
+                isImportingAudio = true
+            } label: {
+                Label("Add Audio", systemImage: "music.note")
+            }
+            .help("Add music or a voice-over at the playhead")
+            .fileImporter(isPresented: $isImportingAudio, allowedContentTypes: [.audio]) { result in
+                if case .success(let url) = result {
+                    Task { await model.importAudio(from: url, undoManager: undoManager) }
+                }
+            }
+
             Spacer()
 
             Image(systemName: "minus.magnifyingglass")
@@ -159,17 +173,28 @@ private struct TimelineToolbar: View {
 private struct TimelineHeaders: View {
     let model: EditorModel
     let rows: [TimelineRow]
+    let undoManager: UndoManager?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             Color.clear.frame(height: EditorTimeline.rulerHeight)
             ForEach(rows, id: \.self) { row in
-                Label(title(for: row), systemImage: icon(for: row))
-                    .font(.callout)
-                    .lineLimit(1)
-                    .padding(.horizontal, 10)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .frame(height: row.height)
+                Group {
+                    if let mix = model.mix(for: row) {
+                        AudioRowHeader(title: title(for: row), icon: icon(for: row), mix: mix) { mix, isDragging, actionName in
+                            model.setMix(mix, for: row, actionName: actionName, undoManager: undoManager, isDragging: isDragging)
+                        } onDragEnd: {
+                            model.endGesture("Change Volume", undoManager: undoManager)
+                        }
+                    } else {
+                        Label(title(for: row), systemImage: icon(for: row))
+                            .font(.callout)
+                            .lineLimit(1)
+                    }
+                }
+                .padding(.horizontal, 10)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .frame(height: row.height)
             }
         }
     }
@@ -193,6 +218,57 @@ private struct TimelineHeaders: View {
         case .webcam: "video"
         case .recordedAudio(let index): model.recordedAudioNames[safe: index] == "Microphone" ? "mic" : "speaker.wave.2"
         case .importedAudio: "music.note"
+        }
+    }
+}
+
+/// An audio row's name with its mute button and volume slider.
+private struct AudioRowHeader: View {
+    let title: String
+    let icon: String
+    let mix: TrackMix
+    let onChange: (TrackMix, _ isDragging: Bool, _ actionName: String) -> Void
+    let onDragEnd: () -> Void
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Button {
+                var mix = mix
+                mix.muted.toggle()
+                onChange(mix, false, mix.muted ? "Mute" : "Unmute")
+            } label: {
+                Image(systemName: mix.muted ? "speaker.slash.fill" : icon)
+                    .foregroundStyle(mix.muted ? Color.secondary : Color.primary)
+                    .frame(width: 16)
+            }
+            .buttonStyle(.borderless)
+            .help(mix.muted ? "Unmute \(title)" : "Mute \(title)")
+
+            Text(title)
+                .font(.caption)
+                .lineLimit(1)
+                .foregroundStyle(mix.muted ? .secondary : .primary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+            Slider(
+                value: Binding(
+                    get: { mix.volume },
+                    set: { volume in
+                        var mix = mix
+                        mix.volume = volume
+                        onChange(mix, true, "Change Volume")
+                    }
+                ),
+                in: 0...2
+            ) { isEditing in
+                if !isEditing {
+                    onDragEnd()
+                }
+            }
+            .controlSize(.mini)
+            .frame(width: 44)
+            .disabled(mix.muted)
+            .help("Volume: \(Int((mix.volume * 100).rounded()))%")
         }
     }
 }
@@ -304,9 +380,21 @@ private struct TimelineTracks: View {
 
         case .importedAudio(let id):
             if let clip = model.edits.importedAudio.first(where: { $0.id == id }) {
-                TimelineBlock(title: clip.name, color: .green, isSelected: model.selection == .audio(id))
-                    .frame(width: max(min(clip.duration, model.duration - clip.offset) * pointsPerSecond, 2))
-                    .offset(x: clip.offset * pointsPerSecond)
+                // Only the part inside the video plays.
+                let start = max(clip.offset, 0)
+                let end = min(clip.offset + clip.duration, model.duration)
+                EditableBlock(
+                    title: clip.name,
+                    color: .green,
+                    isSelected: model.selection == .audio(id),
+                    canMove: true,
+                    canTrim: false,
+                    onSelect: { model.selection = .audio(id) },
+                    onDrag: { _, points in model.dragAudio(id, by: points / pointsPerSecond) },
+                    onDragEnd: { _ in model.endGesture("Move Audio", undoManager: undoManager) }
+                )
+                .frame(width: max((end - start) * pointsPerSecond, 12))
+                .offset(x: start * pointsPerSecond)
             }
         }
     }
@@ -319,6 +407,7 @@ struct EditableBlock: View {
     let color: Color
     let isSelected: Bool
     let canMove: Bool
+    var canTrim = true
     let onSelect: () -> Void
     let onDrag: (BlockEdit, Double) -> Void
     let onDragEnd: (BlockEdit) -> Void
@@ -330,8 +419,12 @@ struct EditableBlock: View {
             .contentShape(Rectangle())
             .onTapGesture(perform: onSelect)
             .gesture(canMove ? drag(.move) : nil)
-            .overlay(alignment: .leading) { handle(.trimStart) }
-            .overlay(alignment: .trailing) { handle(.trimEnd) }
+            .overlay(alignment: .leading) {
+                if canTrim { handle(.trimStart) }
+            }
+            .overlay(alignment: .trailing) {
+                if canTrim { handle(.trimEnd) }
+            }
             .onHover { isHovering = $0 }
     }
 
