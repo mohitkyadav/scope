@@ -34,7 +34,8 @@ final class Recorder: NSObject {
 
     var isRecording: Bool { state == .recording }
 
-    func start(filter: SCContentFilter, outputURL: URL, countdownScreen: NSScreen?) async {
+    /// `microphoneID` is the capture device to record alongside the screen, or `nil` for no microphone.
+    func start(filter: SCContentFilter, microphoneID: String?, outputURL: URL, countdownScreen: NSScreen?) async {
         guard state == .idle else { return }
 
         if let countdownScreen {
@@ -55,6 +56,11 @@ final class Recorder: NSObject {
         configuration.minimumFrameInterval = CMTime(value: 1, timescale: 60)
         configuration.queueDepth = 6
         configuration.showsCursor = true
+
+        if let microphoneID {
+            configuration.captureMicrophone = true
+            configuration.microphoneCaptureDeviceID = microphoneID
+        }
 
         let outputConfiguration = SCRecordingOutputConfiguration()
         outputConfiguration.outputURL = outputURL

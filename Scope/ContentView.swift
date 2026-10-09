@@ -4,12 +4,14 @@
 //
 
 import AppKit
+import AVFoundation
 import SwiftUI
 
 struct ContentView: View {
     @State private var permission = ScreenRecordingPermission()
     @State private var sources = CaptureSources()
     @State private var library = RecordingLibrary()
+    @State private var audio = AudioSettings()
     @Environment(Recorder.self) private var recorder
     @Environment(\.scenePhase) private var scenePhase
 
@@ -40,8 +42,11 @@ struct ContentView: View {
 
             HStack(spacing: 16) {
                 if permission.isGranted {
-                    SourcePicker(sources: sources)
-                        .disabled(recorder.state != .idle)
+                    VStack(alignment: .leading, spacing: 10) {
+                        SourcePicker(sources: sources)
+                        AudioControls(settings: audio)
+                    }
+                    .disabled(recorder.state != .idle)
                 }
 
                 Spacer(minLength: 0)
@@ -75,6 +80,22 @@ struct ContentView: View {
         }
         .task {
             await library.reload()
+        }
+        .task {
+            audio.loadMicrophones()
+            if audio.microphoneEnabled {
+                await audio.requestMicrophoneAccess()
+            }
+            // Reload when a microphone is plugged in.
+            for await _ in NotificationCenter.default.notifications(named: AVCaptureDevice.wasConnectedNotification) {
+                audio.loadMicrophones()
+            }
+        }
+        .task {
+            // ...or unplugged.
+            for await _ in NotificationCenter.default.notifications(named: AVCaptureDevice.wasDisconnectedNotification) {
+                audio.loadMicrophones()
+            }
         }
         .task(id: permission.isGranted) {
             guard permission.isGranted else { return }
@@ -115,6 +136,7 @@ struct ContentView: View {
             do {
                 await recorder.start(
                     filter: filter,
+                    microphoneID: audio.microphoneToRecord?.id,
                     outputURL: try RecordingLibrary.newRecordingURL(),
                     countdownScreen: sources.selectedScreen
                 )
