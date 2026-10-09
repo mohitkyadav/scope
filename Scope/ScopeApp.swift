@@ -22,6 +22,9 @@ struct ScopeApp: App {
             }
         }
         .defaultSize(width: 1100, height: 720)
+        .commands {
+            ProjectCommands()
+        }
 
         // Only in the menu bar while a recording is running.
         MenuBarExtra(isInserted: .constant(recorder.isRecording || recorder.state == .stopping)) {

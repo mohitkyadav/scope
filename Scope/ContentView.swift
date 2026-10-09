@@ -27,7 +27,7 @@ struct ContentView: View {
                     .padding([.horizontal, .top], 20)
             }
 
-            Text("Recordings")
+            Text("Recent Projects")
                 .font(.headline)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding([.horizontal, .top], 20)

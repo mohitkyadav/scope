@@ -71,6 +71,7 @@ struct EditorView: View {
         .frame(minWidth: 960, minHeight: 680)
         .navigationTitle(model.project.name)
         .task {
+            RecentProjects.shared.add(model.project.url)
             await model.load()
         }
         .onDisappear {

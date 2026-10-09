@@ -9,7 +9,10 @@ import Observation
 
 struct Recording: Identifiable, Hashable {
     let project: ScopeProject
+    /// When it was recorded.
     let date: Date
+    /// When it was recorded or last edited, whichever is later.
+    let lastEdited: Date
     let duration: TimeInterval?
 
     var id: URL { project.url }
@@ -48,9 +51,12 @@ final class RecordingLibrary {
 
             let project = ScopeProject(url: url)
             let duration = try? await AVURLAsset(url: project.videoURL).load(.duration).seconds
-            loaded.append(Recording(project: project, date: values?.creationDate ?? .distantPast, duration: duration))
+            let created = values?.creationDate ?? .distantPast
+            let edited = (try? project.projectFileURL.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate
+            loaded.append(Recording(project: project, date: created, lastEdited: max(created, edited ?? created), duration: duration))
         }
-        recordings = loaded.sorted { $0.date > $1.date }
+        // Most recently worked on first.
+        recordings = loaded.sorted { $0.lastEdited > $1.lastEdited }
     }
 
     /// Plays each project's raw video in the default player, e.g. QuickTime.

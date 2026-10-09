@@ -3,6 +3,7 @@
 //  Scope
 //
 
+import AVFoundation
 import SwiftUI
 
 struct RecordingsList: View {
@@ -41,18 +42,37 @@ private struct RecordingRow: View {
     let recording: Recording
     let showInFinder: () -> Void
 
+    @State private var thumbnail: NSImage?
+
     var body: some View {
         HStack(spacing: 12) {
-            Image(systemName: "film")
-                .font(.title2)
-                .foregroundStyle(.secondary)
+            Group {
+                if let thumbnail {
+                    Image(nsImage: thumbnail)
+                        .resizable()
+                        .aspectRatio(contentMode: .fill)
+                } else {
+                    Image(systemName: "film")
+                        .font(.title2)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .frame(width: 80, height: 45)
+            .background(.quaternary)
+            .clipShape(.rect(cornerRadius: 5))
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(recording.date.formatted(date: .abbreviated, time: .shortened))
-                Text(recording.duration?.clockString ?? "–")
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-                    .monospacedDigit()
+                HStack(spacing: 4) {
+                    Text(recording.duration?.clockString ?? "–")
+                        .monospacedDigit()
+                    if recording.lastEdited > recording.date.addingTimeInterval(60) {
+                        Text("·")
+                        Text("Edited \(recording.lastEdited, format: .relative(presentation: .named))")
+                    }
+                }
+                .font(.callout)
+                .foregroundStyle(.secondary)
             }
 
             Spacer()
@@ -64,5 +84,18 @@ private struct RecordingRow: View {
             .help("Show in Finder")
         }
         .padding(.vertical, 4)
+        .task(id: recording.id) {
+            thumbnail = await Self.thumbnail(of: recording.project.videoURL)
+        }
+    }
+
+    /// A small frame from early in the recording.
+    private nonisolated static func thumbnail(of url: URL) async -> NSImage? {
+        let generator = AVAssetImageGenerator(asset: AVURLAsset(url: url))
+        generator.maximumSize = CGSize(width: 240, height: 135)
+        generator.requestedTimeToleranceBefore = .positiveInfinity
+        generator.requestedTimeToleranceAfter = .positiveInfinity
+        guard let (image, _) = try? await generator.image(at: CMTime(seconds: 0.5, preferredTimescale: 600)) else { return nil }
+        return NSImage(cgImage: image, size: .zero)
     }
 }
