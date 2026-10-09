@@ -12,6 +12,8 @@ struct ContentView: View {
     @State private var sources = CaptureSources()
     @State private var library = RecordingLibrary()
     @State private var audio = AudioSettings()
+    @State private var microphoneMeter = AudioMeter()
+    @State private var systemAudioMeter = AudioMeter()
     @Environment(Recorder.self) private var recorder
     @Environment(\.scenePhase) private var scenePhase
 
@@ -44,7 +46,11 @@ struct ContentView: View {
                 if permission.isGranted {
                     VStack(alignment: .leading, spacing: 10) {
                         SourcePicker(sources: sources)
-                        AudioControls(settings: audio)
+                        AudioControls(
+                            settings: audio,
+                            microphoneLevel: microphoneMeter.level,
+                            systemAudioLevel: systemAudioMeter.level
+                        )
                     }
                     .disabled(recorder.state != .idle)
                 }
@@ -91,6 +97,14 @@ struct ContentView: View {
                 audio.loadMicrophones()
             }
         }
+        .task(id: microphoneToMeter) {
+            guard let microphoneToMeter else { return }
+            await microphoneMeter.runMicrophone(deviceID: microphoneToMeter)
+        }
+        .task(id: systemAudioToMeter) {
+            guard systemAudioToMeter != nil, let filter = sources.selectedFilter else { return }
+            await systemAudioMeter.runSystemAudio(filter: filter)
+        }
         .task {
             // ...or unplugged.
             for await _ in NotificationCenter.default.notifications(named: AVCaptureDevice.wasDisconnectedNotification) {
@@ -118,6 +132,25 @@ struct ContentView: View {
                 guard permission.isGranted else { continue }
                 await sources.load()
             }
+        }
+    }
+
+    /// Meters only run while Scope is in front or recording, so the mic and screen
+    /// recording indicators aren't left on the rest of the time.
+    private var metersActive: Bool {
+        scenePhase == .active || recorder.state != .idle
+    }
+
+    private var microphoneToMeter: String? {
+        metersActive ? audio.microphoneToRecord?.id : nil
+    }
+
+    /// Changes whenever the system audio meter should restart with a different source.
+    private var systemAudioToMeter: String? {
+        guard metersActive, audio.systemAudioEnabled, permission.isGranted else { return nil }
+        switch sources.kind {
+        case .display: return "display-\(sources.selectedDisplayID ?? 0)"
+        case .window: return "window-\(sources.selectedWindowID ?? 0)"
         }
     }
 

@@ -8,6 +8,8 @@ import SwiftUI
 
 struct AudioControls: View {
     @Bindable var settings: AudioSettings
+    let microphoneLevel: Float
+    let systemAudioLevel: Float
 
     var body: some View {
         HStack(spacing: 8) {
@@ -36,6 +38,8 @@ struct AudioControls: View {
                     }
                     .labelsHidden()
                     .frame(maxWidth: 200)
+
+                    LevelMeter(level: microphoneLevel)
                 }
             }
 
@@ -45,6 +49,10 @@ struct AudioControls: View {
 
             Toggle(isOn: $settings.systemAudioEnabled) {
                 Label("System audio", systemImage: "speaker.wave.2")
+            }
+
+            if settings.systemAudioEnabled {
+                LevelMeter(level: systemAudioLevel)
             }
         }
     }
