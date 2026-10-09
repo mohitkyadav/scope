@@ -1,0 +1,49 @@
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+.Spotlight-V100
+.Trashes
+
+# Xcode user state
+xcuserdata/
+*.xcuserstate
+*.xcscmblueprint
+*.xccheckout
+*.moved-aside
+*.hmap
+*.ipa
+*.dSYM.zip
+*.dSYM
+
+# Build output
+build/
+DerivedData/
+*.xcarchive
+*.app
+
+# Swift Package Manager
+.build/
+.swiftpm/
+
+# CocoaPods / Carthage
+Pods/
+Carthage/Build/
+Carthage/Checkouts/
+
+# fastlane
+fastlane/report.xml
+fastlane/Preview.html
+fastlane/screenshots/**/*.png
+fastlane/test_output
+
+# Editors
+.vscode/
+.idea/
+*.swp
+*~
+
+# Claude Code (personal, machine-specific)
+CLAUDE.local.md
+requirements.md
