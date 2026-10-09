@@ -62,6 +62,7 @@ struct EditorInspector: View {
                         }
                         .pickerStyle(.segmented)
                         Toggle("Shadow", isOn: $settings.webcamShadow)
+                        Toggle("Mirror", isOn: $settings.webcamMirrored)
                     }
                     .disabled(!settings.webcamVisible)
                 } header: {

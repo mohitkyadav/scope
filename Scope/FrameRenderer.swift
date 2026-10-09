@@ -69,10 +69,10 @@ nonisolated struct FrameRenderer: @unchecked Sendable {
         let rect = CGRect(x: center.x - diameter / 2, y: center.y - diameter / 2, width: diameter, height: diameter)
         let radius = settings.webcamShape == .circle ? diameter / 2 : diameter * 0.18
 
-        // Fill the bubble with the middle of the camera image, mirrored like a camera preview.
+        // Fill the bubble with the middle of the camera image, mirrored like a camera preview unless turned off.
         let scale = diameter / min(extent.width, extent.height)
         let camera = webcam.transformed(by: CGAffineTransform(translationX: -extent.midX, y: -extent.midY)
-            .concatenating(CGAffineTransform(scaleX: -scale, y: scale))
+            .concatenating(CGAffineTransform(scaleX: settings.webcamMirrored ? -scale : scale, y: scale))
             .concatenating(CGAffineTransform(translationX: center.x, y: center.y)))
         let face = camera.applyingFilter("CIBlendWithMask", parameters: [
             kCIInputBackgroundImageKey: CIImage.empty(),

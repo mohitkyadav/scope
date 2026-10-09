@@ -472,6 +472,55 @@ final class EditorModel {
         }
     }
 
+    // MARK: - Webcam
+
+    /// The stretch of the recording the webcam covers, following the timeline as it's edited.
+    var webcamRange: ClosedRange<Double>? {
+        guard let range = scene?.webcamRange else { return nil }
+        let offset = edits.webcamOffset ?? range.lowerBound
+        return offset...(offset + range.upperBound - range.lowerBound)
+    }
+
+    /// Copies a video into the project and uses it for the webcam bubble, starting at the playhead.
+    func importWebcam(from url: URL, undoManager: UndoManager?) async {
+        let accessing = url.startAccessingSecurityScopedResource()
+        defer {
+            if accessing {
+                url.stopAccessingSecurityScopedResource()
+            }
+        }
+
+        let fileName = "webcam-\(UUID().uuidString).\(url.pathExtension.isEmpty ? "mov" : url.pathExtension)"
+        let destination = project.url.appending(path: fileName)
+        do {
+            try FileManager.default.copyItem(at: url, to: destination)
+            guard try await !AVURLAsset(url: destination).loadTracks(withMediaType: .video).isEmpty else {
+                try? FileManager.default.removeItem(at: destination)
+                errorMessage = "“\(url.lastPathComponent)” has no video."
+                return
+            }
+            let start = timeMap.sourceTime(at: currentTime)
+            perform("Use Webcam Video", undoManager: undoManager) { edits in
+                edits.webcamFileName = fileName
+                edits.webcamOffset = start
+            }
+        } catch {
+            errorMessage = "The video couldn't be added: \(error.localizedDescription)"
+        }
+    }
+
+    /// Slides the webcam video against the recording during a drag, to line it up.
+    func dragWebcam(by seconds: Double) {
+        beginGesture()
+        guard let range = scene?.webcamRange else { return }
+        let original = gestureStart?.webcamOffset ?? range.lowerBound
+        let length = range.upperBound - range.lowerBound
+        let limit = sourceDuration
+        update { edits in
+            edits.webcamOffset = min(max(original + seconds, -length + 0.5), limit - 0.5)
+        }
+    }
+
     // MARK: - Rebuilding playback
 
     private func scheduleRebuild() {

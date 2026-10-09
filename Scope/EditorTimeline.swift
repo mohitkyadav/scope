@@ -79,6 +79,7 @@ private struct TimelineToolbar: View {
     @Binding var magnification: Double
     let undoManager: UndoManager?
     @State private var isImportingAudio = false
+    @State private var isImportingWebcam = false
 
     var body: some View {
         HStack(spacing: 12) {
@@ -151,6 +152,18 @@ private struct TimelineToolbar: View {
             .fileImporter(isPresented: $isImportingAudio, allowedContentTypes: [.audio]) { result in
                 if case .success(let url) = result {
                     Task { await model.importAudio(from: url, undoManager: undoManager) }
+                }
+            }
+
+            Button {
+                isImportingWebcam = true
+            } label: {
+                Label("Webcam Video", systemImage: "video.badge.plus")
+            }
+            .help("Use another video for the webcam bubble, starting at the playhead")
+            .fileImporter(isPresented: $isImportingWebcam, allowedContentTypes: [.movie]) { result in
+                if case .success(let url) = result {
+                    Task { await model.importWebcam(from: url, undoManager: undoManager) }
                 }
             }
 
@@ -362,12 +375,22 @@ private struct TimelineTracks: View {
             }
 
         case .webcam:
-            if let range = model.scene?.webcamRange {
+            if let range = model.webcamRange {
                 let start = map.outputTime(at: range.lowerBound)
                 let end = map.outputTime(at: range.upperBound)
-                TimelineBlock(title: nil, color: .teal, isSelected: false)
-                    .frame(width: max((end - start) * pointsPerSecond, 2))
-                    .offset(x: start * pointsPerSecond)
+                EditableBlock(
+                    title: nil,
+                    color: .teal,
+                    isSelected: false,
+                    canMove: true,
+                    canTrim: false,
+                    onSelect: {},
+                    onDrag: { _, points in model.dragWebcam(by: points / pointsPerSecond) },
+                    onDragEnd: { _ in model.endGesture("Move Webcam", undoManager: undoManager) }
+                )
+                .frame(width: max((end - start) * pointsPerSecond, 12))
+                .offset(x: start * pointsPerSecond)
+                .help("Drag to line the webcam up with the recording")
             }
 
         case .recordedAudio:

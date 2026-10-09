@@ -32,6 +32,8 @@ nonisolated struct EditorSettings: Equatable, Sendable {
     var webcamSize = 0.22
     var webcamShape = BubbleShape.circle
     var webcamShadow = true
+    /// Flip the webcam like a mirror, which is how people expect to see themselves.
+    var webcamMirrored = true
 
     /// What the recording sits on. With `.none` the video fills the frame and the settings below do nothing.
     var background = Background.none
@@ -65,7 +67,7 @@ extension EditorSettings: Codable {
     private enum CodingKeys: String, CodingKey {
         case cursorSmoothing, cursorSize, showClicks
         case autoZoom, zoomLevel, zoomTransition
-        case webcamVisible, webcamX, webcamY, webcamSize, webcamShape, webcamShadow
+        case webcamVisible, webcamX, webcamY, webcamSize, webcamShape, webcamShadow, webcamMirrored
         case background, padding, cornerRadius, shadow, parallax
     }
 
@@ -90,6 +92,7 @@ extension EditorSettings: Codable {
         read(.webcamSize, into: &webcamSize)
         read(.webcamShape, into: &webcamShape)
         read(.webcamShadow, into: &webcamShadow)
+        read(.webcamMirrored, into: &webcamMirrored)
         read(.background, into: &background)
         read(.padding, into: &padding)
         read(.cornerRadius, into: &cornerRadius)
