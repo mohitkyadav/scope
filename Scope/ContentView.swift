@@ -6,8 +6,16 @@
 import SwiftUI
 
 struct ContentView: View {
+    @State private var permission = ScreenRecordingPermission()
+    @Environment(\.scenePhase) private var scenePhase
+
     var body: some View {
         VStack(spacing: 0) {
+            if !permission.isGranted {
+                PermissionBanner(openSettings: permission.request)
+                    .padding([.horizontal, .top], 20)
+            }
+
             Text("Recordings")
                 .font(.headline)
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -25,9 +33,15 @@ struct ContentView: View {
             RecordButton {
                 // Recording starts in step 1.2.
             }
+            .disabled(!permission.isGranted)
             .padding(20)
         }
         .frame(minWidth: 480, minHeight: 360)
+        .onChange(of: scenePhase) {
+            if scenePhase == .active {
+                permission.refresh()
+            }
+        }
     }
 }
 
