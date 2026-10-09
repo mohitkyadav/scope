@@ -19,6 +19,8 @@ nonisolated struct FrameRenderer: @unchecked Sendable {
     /// Video pixels per screen point at recording time, e.g. 2 on a Retina display.
     let pixelsPerPoint: CGFloat
     let settings: EditorSettings
+    /// Shown before the recording's first video frame arrives, instead of a black frame.
+    let firstFrame: CIImage?
 
     /// How long a click ripple lasts.
     private static let rippleDuration = 0.5
@@ -27,6 +29,8 @@ nonisolated struct FrameRenderer: @unchecked Sendable {
 
     func render(source: CIImage, time: Double) -> CIImage {
         let videoRect = CGRect(origin: .zero, size: videoSize)
+        // Before the first video frame there's no source image, only an infinite empty one.
+        let source = source.extent.isInfinite ? (firstFrame ?? source) : source
         var frame = source.cropped(to: videoRect)
 
         if settings.showClicks {

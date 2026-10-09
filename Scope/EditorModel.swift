@@ -5,6 +5,7 @@
 
 import AVFoundation
 import Combine
+import CoreImage
 import Observation
 
 /// Playback state for one project open in the editor.
@@ -34,6 +35,7 @@ final class EditorModel {
     private var renderTask: Task<Void, Never>?
     private var pixelsPerPoint: CGFloat = 2
     private var sprite: CursorSprite?
+    private var firstFrame: CIImage?
 
     private var timeObserver: Any?
     private var statusTask: Task<Void, Never>?
@@ -64,6 +66,7 @@ final class EditorModel {
             }
         }
         sprite = CursorSprite.arrow()
+        firstFrame = await Self.firstFrame(of: asset)
 
         player.replaceCurrentItem(with: AVPlayerItem(asset: asset))
         await applyRenderer()
@@ -133,7 +136,8 @@ final class EditorModel {
             cursorPath: cursorPath,
             sprite: sprite,
             pixelsPerPoint: pixelsPerPoint,
-            settings: settings
+            settings: settings,
+            firstFrame: firstFrame
         )
         do {
             item.videoComposition = try await Self.makeVideoComposition(for: item.asset, renderer: renderer)
@@ -158,7 +162,20 @@ final class EditorModel {
             request.finish(with: frame, context: nil)
         }
         composition.renderSize = renderer.canvasSize
+
+        // Recordings only get a new video frame when something on screen changes, so a still screen
+        // can go a quarter of a second or more without one. Render at a steady 60 fps instead of
+        // following the video's frames, so the cursor keeps moving smoothly in between.
+        composition.frameDuration = CMTime(value: 1, timescale: 60)
+        composition.sourceTrackIDForFrameTiming = kCMPersistentTrackID_Invalid
         return composition
+    }
+
+    private nonisolated static func firstFrame(of asset: AVAsset) async -> CIImage? {
+        let generator = AVAssetImageGenerator(asset: asset)
+        generator.requestedTimeToleranceAfter = .positiveInfinity
+        guard let (image, _) = try? await generator.image(at: .zero) else { return nil }
+        return CIImage(cgImage: image)
     }
 
     func seek(to time: TimeInterval) {
