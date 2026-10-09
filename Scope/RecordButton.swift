@@ -14,7 +14,7 @@ struct RecordButton: View {
         Button(action: action) {
             Group {
                 if isRecording {
-                    Label("Stop  \(Duration.seconds(elapsed).formatted(.time(pattern: .minuteSecond)))", systemImage: "stop.circle.fill")
+                    Label("Stop  \(elapsed.clockString)", systemImage: "stop.circle.fill")
                         .monospacedDigit()
                 } else {
                     Label("Record", systemImage: "record.circle.fill")

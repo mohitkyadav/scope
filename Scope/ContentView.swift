@@ -9,6 +9,7 @@ import SwiftUI
 struct ContentView: View {
     @State private var permission = ScreenRecordingPermission()
     @State private var displayList = DisplayList()
+    @State private var library = RecordingLibrary()
     @Environment(Recorder.self) private var recorder
     @Environment(\.scenePhase) private var scenePhase
 
@@ -24,12 +25,16 @@ struct ContentView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding([.horizontal, .top], 20)
 
-            ContentUnavailableView(
-                "No Recordings",
-                systemImage: "film.stack",
-                description: Text("Recordings you make will appear here.")
-            )
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            if library.recordings.isEmpty {
+                ContentUnavailableView(
+                    "No Recordings",
+                    systemImage: "film.stack",
+                    description: Text("Recordings you make will appear here.")
+                )
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                RecordingsList(library: library)
+            }
 
             Divider()
 
@@ -52,7 +57,14 @@ struct ContentView: View {
         .onChange(of: scenePhase) {
             if scenePhase == .active {
                 permission.refresh()
+                Task { await library.reload() }
             }
+        }
+        .onChange(of: recorder.lastRecordingURL) {
+            Task { await library.reload() }
+        }
+        .task {
+            await library.reload()
         }
         .task(id: permission.isGranted) {
             guard permission.isGranted else { return }
