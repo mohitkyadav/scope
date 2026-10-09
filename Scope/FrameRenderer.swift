@@ -57,13 +57,10 @@ nonisolated struct FrameRenderer: @unchecked Sendable {
         let extent = webcam.extent
         guard !extent.isInfinite, extent.width > 0, extent.height > 0 else { return nil }
 
-        let shorterSide = min(canvasSize.width, canvasSize.height)
-        let diameter = settings.webcamSize * shorterSide
-        let margin = shorterSide * 0.02
-        let center = CGPoint(
-            x: min(max(settings.webcamX * canvasSize.width, diameter / 2 + margin), canvasSize.width - diameter / 2 - margin),
-            y: min(max((1 - settings.webcamY) * canvasSize.height, diameter / 2 + margin), canvasSize.height - diameter / 2 - margin)
-        )
+        let diameter = settings.webcamDiameter(in: canvasSize)
+        // Settings measure from the top left; Core Image from the bottom left.
+        let topLeftCenter = settings.webcamCenter(in: canvasSize)
+        let center = CGPoint(x: topLeftCenter.x, y: canvasSize.height - topLeftCenter.y)
         let rect = CGRect(x: center.x - diameter / 2, y: center.y - diameter / 2, width: diameter, height: diameter)
         let radius = settings.webcamShape == .circle ? diameter / 2 : diameter * 0.18
 

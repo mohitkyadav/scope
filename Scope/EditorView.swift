@@ -27,6 +27,11 @@ struct EditorView: View {
                     VStack(spacing: 0) {
                         PlayerView(player: model.player)
                             .background(.black)
+                            .overlay {
+                                if model.hasWebcam, model.settings.webcamVisible {
+                                    BubbleOverlay(settings: $model.settings, canvasSize: model.canvasSize)
+                                }
+                            }
 
                         Divider()
 
@@ -35,7 +40,7 @@ struct EditorView: View {
 
                     Divider()
 
-                    EditorInspector(settings: $model.settings, zoomCount: model.zoomSegments.count)
+                    EditorInspector(settings: $model.settings, zoomCount: model.zoomSegments.count, hasWebcam: model.hasWebcam)
                         .frame(width: 300)
                 }
             }

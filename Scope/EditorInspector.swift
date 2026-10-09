@@ -9,6 +9,7 @@ import SwiftUI
 struct EditorInspector: View {
     @Binding var settings: EditorSettings
     let zoomCount: Int
+    let hasWebcam: Bool
 
     var body: some View {
         Form {
@@ -39,6 +40,30 @@ struct EditorInspector: View {
                     String(format: "%.1f×", $0)
                 }
                 Toggle("Show clicks", isOn: $settings.showClicks)
+            }
+
+            if hasWebcam {
+                Section {
+                    Toggle("Show bubble", isOn: $settings.webcamVisible)
+
+                    Group {
+                        LabeledSlider("Size", value: $settings.webcamSize, in: 0.1...0.45) {
+                            "\(Int(($0 * 100).rounded()))%"
+                        }
+                        Picker("Shape", selection: $settings.webcamShape) {
+                            ForEach(BubbleShape.allCases) { shape in
+                                Text(shape.name).tag(shape)
+                            }
+                        }
+                        .pickerStyle(.segmented)
+                    }
+                    .disabled(!settings.webcamVisible)
+                } header: {
+                    Text("Webcam")
+                } footer: {
+                    Text("Drag the bubble in the preview to move it.")
+                        .foregroundStyle(.secondary)
+                }
             }
 
             Section("Background") {
@@ -140,6 +165,6 @@ struct LabeledSlider: View {
 }
 
 #Preview {
-    EditorInspector(settings: .constant(EditorSettings()), zoomCount: 3)
+    EditorInspector(settings: .constant(EditorSettings()), zoomCount: 3, hasWebcam: true)
         .frame(width: 300)
 }

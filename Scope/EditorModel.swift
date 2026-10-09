@@ -23,11 +23,17 @@ final class EditorModel {
 
     var settings = EditorSettings() {
         didSet {
-            if settings != oldValue {
+            if settings != oldValue, !isRestoringSettings {
                 settingsChanged()
             }
         }
     }
+    /// Set while loading saved settings, which shouldn't be saved straight back.
+    private var isRestoringSettings = false
+
+    /// The size of the frames the renderer draws.
+    var canvasSize: CGSize { videoSize }
+    var hasWebcam: Bool { scene?.webcamTrackID != nil }
 
     private var videoSize: CGSize = .zero
     private var cursorTrack: CursorTrack?
@@ -36,6 +42,7 @@ final class EditorModel {
     /// The smoothing `cursorPath` was built with, so it's only rebuilt when that changes.
     private var cursorPathSmoothing: Double?
     private var renderTask: Task<Void, Never>?
+    private var saveTask: Task<Void, Never>?
     private var pixelsPerPoint: CGFloat = 2
     private var sprite: CursorSprite?
     private var firstFrame: CIImage?
@@ -62,6 +69,13 @@ final class EditorModel {
         } catch {
             errorMessage = "The recording couldn't be opened: \(error.localizedDescription)"
             return
+        }
+
+        // A project that hasn't been edited yet has no project file and uses the default settings.
+        if let file = try? ProjectFile.read(from: project.projectFileURL) {
+            isRestoringSettings = true
+            settings = file.settings
+            isRestoringSettings = false
         }
 
         // Without cursor data the video still plays, just with no cursor drawn.
@@ -97,6 +111,10 @@ final class EditorModel {
     }
 
     func close() {
+        if saveTask != nil {
+            saveTask?.cancel()
+            save()
+        }
         player.pause()
         if let timeObserver {
             player.removeTimeObserver(timeObserver)
@@ -104,6 +122,15 @@ final class EditorModel {
         timeObserver = nil
         statusTask?.cancel()
         statusTask = nil
+    }
+
+    private func save() {
+        saveTask = nil
+        do {
+            try ProjectFile(settings: settings).write(to: project.projectFileURL)
+        } catch {
+            errorMessage = "Your changes couldn't be saved: \(error.localizedDescription)"
+        }
     }
 
     func togglePlayback() {
@@ -119,6 +146,14 @@ final class EditorModel {
     }
 
     private func settingsChanged() {
+        saveTask?.cancel()
+        saveTask = Task {
+            // Save once changes settle rather than on every step of a slider drag.
+            try? await Task.sleep(for: .milliseconds(500))
+            guard !Task.isCancelled else { return }
+            save()
+        }
+
         renderTask?.cancel()
         renderTask = Task {
             // Dragging a slider changes settings many times a second; rebuild once it pauses briefly.

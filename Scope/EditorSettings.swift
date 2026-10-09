@@ -3,9 +3,11 @@
 //  Scope
 //
 
+import CoreGraphics
 import Foundation
 
-/// How a project looks. Every change rebuilds the frame renderer.
+/// How a project looks. Every change rebuilds the frame renderer, and settings are saved in the
+/// project's `project.json`.
 nonisolated struct EditorSettings: Equatable, Sendable {
     /// 0 follows the recorded path exactly, 1 is the smoothest.
     var cursorSmoothing = 0.5
@@ -37,6 +39,57 @@ nonisolated struct EditorSettings: Equatable, Sendable {
     /// Corner radius of the recording, in screen points.
     var cornerRadius = 12.0
     var shadow = true
+
+    /// The bubble's width in pixels on a frame of `canvas` size.
+    func webcamDiameter(in canvas: CGSize) -> CGFloat {
+        webcamSize * min(canvas.width, canvas.height)
+    }
+
+    /// The bubble's centre in pixels from the top left of a frame of `canvas` size, kept far enough
+    /// from the edges that the whole bubble stays in the frame.
+    func webcamCenter(in canvas: CGSize) -> CGPoint {
+        let radius = webcamDiameter(in: canvas) / 2
+        let margin = min(canvas.width, canvas.height) * 0.02
+        return CGPoint(
+            x: min(max(webcamX * canvas.width, radius + margin), canvas.width - radius - margin),
+            y: min(max(webcamY * canvas.height, radius + margin), canvas.height - radius - margin)
+        )
+    }
+}
+
+extension EditorSettings: Codable {
+    private enum CodingKeys: String, CodingKey {
+        case cursorSmoothing, cursorSize, showClicks
+        case autoZoom, zoomLevel, zoomTransition
+        case webcamVisible, webcamX, webcamY, webcamSize, webcamShape
+        case background, padding, cornerRadius, shadow
+    }
+
+    /// Any setting missing from the file keeps its default, so projects saved by older versions still open.
+    init(from decoder: Decoder) throws {
+        self.init()
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        func read<Value: Decodable>(_ key: CodingKeys, into value: inout Value) {
+            if let decoded = try? container.decodeIfPresent(Value.self, forKey: key) {
+                value = decoded
+            }
+        }
+        read(.cursorSmoothing, into: &cursorSmoothing)
+        read(.cursorSize, into: &cursorSize)
+        read(.showClicks, into: &showClicks)
+        read(.autoZoom, into: &autoZoom)
+        read(.zoomLevel, into: &zoomLevel)
+        read(.zoomTransition, into: &zoomTransition)
+        read(.webcamVisible, into: &webcamVisible)
+        read(.webcamX, into: &webcamX)
+        read(.webcamY, into: &webcamY)
+        read(.webcamSize, into: &webcamSize)
+        read(.webcamShape, into: &webcamShape)
+        read(.background, into: &background)
+        read(.padding, into: &padding)
+        read(.cornerRadius, into: &cornerRadius)
+        read(.shadow, into: &shadow)
+    }
 }
 
 nonisolated struct RGB: Equatable, Sendable {
@@ -45,7 +98,7 @@ nonisolated struct RGB: Equatable, Sendable {
     var blue: Double
 }
 
-nonisolated enum Background: String, CaseIterable, Identifiable, Sendable {
+nonisolated enum Background: String, CaseIterable, Identifiable, Codable, Sendable {
     case none, sunset, ocean, forest, lavender, graphite, white, black
 
     var id: Self { self }
@@ -78,7 +131,7 @@ nonisolated enum Background: String, CaseIterable, Identifiable, Sendable {
     }
 }
 
-nonisolated enum BubbleShape: String, CaseIterable, Identifiable, Sendable {
+nonisolated enum BubbleShape: String, CaseIterable, Identifiable, Codable, Sendable {
     case circle, roundedSquare
 
     var id: Self { self }

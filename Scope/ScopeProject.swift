@@ -18,6 +18,8 @@ nonisolated struct ScopeProject: Hashable, Sendable {
     /// Camera video, if a camera was recorded, and how it lines up with the screen video.
     var webcamURL: URL { url.appending(path: "webcam.mov") }
     var webcamInfoURL: URL { url.appending(path: "webcam.json") }
+    /// Edits made in the editor.
+    var projectFileURL: URL { url.appending(path: "project.json") }
 
     var name: String { url.deletingPathExtension().lastPathComponent }
 
