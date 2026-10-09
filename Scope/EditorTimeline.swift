@@ -89,7 +89,7 @@ private struct TimelineToolbar: View {
                     .frame(width: 22, height: 22)
             }
             .buttonStyle(.borderless)
-            .keyboardShortcut(.space, modifiers: [])
+            .keyboardShortcut(model.isEditingText ? nil : KeyboardShortcut(.space, modifiers: []))
             .help(model.isPlaying ? "Pause (Space)" : "Play (Space)")
 
             Text("\(model.currentTime.timecodeString) / \(model.duration.timecodeString)")
@@ -98,6 +98,25 @@ private struct TimelineToolbar: View {
 
             Divider().frame(height: 18)
 
+            editingButtons
+                .labelStyle(.iconOnly)
+
+            Spacer()
+
+            Image(systemName: "minus.magnifyingglass")
+                .foregroundStyle(.secondary)
+            Slider(value: $magnification, in: 1...20)
+                .frame(width: 120)
+                .help("Zoom the timeline")
+            Image(systemName: "plus.magnifyingglass")
+                .foregroundStyle(.secondary)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+    }
+
+    @ViewBuilder
+    private var editingButtons: some View {
             Button {
                 model.splitClip(at: model.currentTime, undoManager: undoManager)
             } label: {
@@ -111,7 +130,7 @@ private struct TimelineToolbar: View {
             } label: {
                 Label("Delete", systemImage: "trash")
             }
-            .keyboardShortcut(.delete, modifiers: [])
+            .keyboardShortcut(model.isEditingText ? nil : KeyboardShortcut(.delete, modifiers: []))
             .disabled(!model.canDeleteSelection)
             .help("Delete the selected item (Delete)")
 
@@ -132,6 +151,7 @@ private struct TimelineToolbar: View {
             } label: {
                 Label(model.selectedClip.map { String(format: "%g×", $0.speed) } ?? "Speed", systemImage: "gauge.with.dots.needle.67percent")
             }
+            .labelStyle(.titleAndIcon)
             .fixedSize()
             .disabled(model.selectedClip == nil)
             .help("Play the selected clip faster or slower. Split first to change part of a clip.")
@@ -142,6 +162,13 @@ private struct TimelineToolbar: View {
                 Label("Add Zoom", systemImage: "plus.magnifyingglass")
             }
             .help("Add a zoom at the playhead")
+
+            Button {
+                model.addNote(undoManager: undoManager)
+            } label: {
+                Label("Add Note", systemImage: "text.bubble")
+            }
+            .help("Add a note at the playhead")
 
             Button {
                 isImportingAudio = true
@@ -166,19 +193,6 @@ private struct TimelineToolbar: View {
                     Task { await model.importWebcam(from: url, undoManager: undoManager) }
                 }
             }
-
-            Spacer()
-
-            Image(systemName: "minus.magnifyingglass")
-                .foregroundStyle(.secondary)
-            Slider(value: $magnification, in: 1...20)
-                .frame(width: 120)
-                .help("Zoom the timeline")
-            Image(systemName: "plus.magnifyingglass")
-                .foregroundStyle(.secondary)
-        }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
     }
 }
 
@@ -369,9 +383,17 @@ private struct TimelineTracks: View {
             ForEach(model.edits.notes) { note in
                 let start = map.outputTime(at: note.start)
                 let end = map.outputTime(at: note.end)
-                TimelineBlock(title: note.text, color: .orange, isSelected: model.selection == .note(note.id))
-                    .frame(width: max((end - start) * pointsPerSecond, 2))
-                    .offset(x: start * pointsPerSecond)
+                EditableBlock(
+                    title: note.text,
+                    color: .orange,
+                    isSelected: model.selection == .note(note.id),
+                    canMove: true,
+                    onSelect: { model.selection = .note(note.id) },
+                    onDrag: { edit, points in model.dragNote(note.id, edit, by: points / pointsPerSecond) },
+                    onDragEnd: { edit in model.endGesture(edit == .move ? "Move Note" : "Resize Note", undoManager: undoManager) }
+                )
+                .frame(width: max((end - start) * pointsPerSecond, 12))
+                .offset(x: start * pointsPerSecond)
             }
 
         case .webcam:
@@ -491,7 +513,7 @@ struct TimelineBlock: View {
                         .font(.caption.weight(.medium))
                         .foregroundStyle(.white)
                         .lineLimit(1)
-                        .padding(.horizontal, 6)
+                        .padding(.horizontal, 10)
                 }
             }
             .padding(.vertical, 3)

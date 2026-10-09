@@ -12,9 +12,27 @@ struct EditorInspector: View {
     let hasWebcam: Bool
     /// Replaces the timeline's zooms with ones placed around the clicks.
     var suggestZooms: () -> Void = {}
+    /// The selected note's text, if a note is selected.
+    var noteText: Binding<String>?
+    var onNoteEditingChanged: (Bool) -> Void = { _ in }
+
+    @FocusState private var isEditingNote: Bool
 
     var body: some View {
         Form {
+            if let noteText {
+                Section {
+                    TextField("Text", text: noteText, axis: .vertical)
+                        .lineLimit(1...4)
+                        .focused($isEditingNote)
+                } header: {
+                    Text("Note")
+                } footer: {
+                    Text("Drag the note in the preview to move it.")
+                        .foregroundStyle(.secondary)
+                }
+            }
+
             Section {
                 Toggle("Auto zoom", isOn: $settings.autoZoom)
 
@@ -93,6 +111,9 @@ struct EditorInspector: View {
             }
         }
         .formStyle(.grouped)
+        .onChange(of: isEditingNote) {
+            onNoteEditingChanged(isEditingNote)
+        }
     }
 }
 

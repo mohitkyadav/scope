@@ -33,6 +33,11 @@ struct EditorView: View {
                                     BubbleOverlay(settings: $model.settings, canvasSize: model.canvasSize)
                                 }
                             }
+                            .overlay {
+                                if let note = model.selectedNote, model.isShowing(note) {
+                                    NoteOverlay(model: model, note: note, undoManager: undoManager)
+                                }
+                            }
 
                         Divider()
 
@@ -45,7 +50,19 @@ struct EditorView: View {
                         settings: $model.settings,
                         zoomCount: model.edits.zooms.count,
                         hasWebcam: model.hasWebcam,
-                        suggestZooms: { model.suggestZooms(undoManager: undoManager) }
+                        suggestZooms: { model.suggestZooms(undoManager: undoManager) },
+                        noteText: model.selectedNote.map { note in
+                            Binding(
+                                get: { model.selectedNote?.text ?? note.text },
+                                set: { text in model.updateNote(note.id) { $0.text = text } }
+                            )
+                        },
+                        onNoteEditingChanged: { isEditing in
+                            model.isEditingText = isEditing
+                            if !isEditing {
+                                model.endGesture("Edit Note", undoManager: undoManager)
+                            }
+                        }
                     )
                         .frame(width: 300)
                 }

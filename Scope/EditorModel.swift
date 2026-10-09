@@ -34,6 +34,8 @@ final class EditorModel {
     private(set) var isPlaying = false
     private(set) var errorMessage: String?
     var selection: TimelineSelection?
+    /// Set while a text field has focus, so single-key shortcuts like Space type instead.
+    var isEditingText = false
 
     var settings = EditorSettings() {
         didSet {
@@ -79,6 +81,8 @@ final class EditorModel {
     private var pixelsPerPoint: CGFloat = 2
     private var sprite: CursorSprite?
     private var firstFrame: CIImage?
+    /// Notes drawn as images, by text, so they're only drawn again when their text changes.
+    private(set) var noteImages: [String: CIImage] = [:]
     /// The project's videos and audio lined up as the timeline says; what the player plays.
     private(set) var scene: ProjectComposition?
 
@@ -394,6 +398,65 @@ final class EditorModel {
         }
     }
 
+    // MARK: - Notes
+
+    var selectedNote: Note? {
+        guard case .note(let id) = selection else { return nil }
+        return edits.notes.first { $0.id == id }
+    }
+
+    /// Whether `note` is on screen at the playhead.
+    func isShowing(_ note: Note) -> Bool {
+        let time = timeMap.sourceTime(at: currentTime)
+        return time >= note.start && time <= note.end
+    }
+
+    /// The size of a note on the frame, in pixels.
+    func noteSize(_ note: Note) -> CGSize {
+        (noteImages[note.text] ?? NoteImage.make(text: note.text, canvasSize: canvasSize))?.extent.size ?? .zero
+    }
+
+    /// Adds a three-second note at the playhead and selects it.
+    func addNote(undoManager: UndoManager?) {
+        let start = timeMap.sourceTime(at: currentTime)
+        let note = Note(start: start, duration: min(3, max(sourceDuration - start, 0.5)))
+        perform("Add Note", undoManager: undoManager) { $0.notes.append(note) }
+        selection = .note(note.id)
+    }
+
+    /// Changes a note while its text is typed or it's dragged around the preview; finish with `endGesture`.
+    func updateNote(_ id: UUID, _ change: (inout Note) -> Void) {
+        update { edits in
+            if let index = edits.notes.firstIndex(where: { $0.id == id }) {
+                change(&edits.notes[index])
+            }
+        }
+    }
+
+    /// Moves or resizes a note on the timeline during a drag, like a zoom.
+    func dragNote(_ id: UUID, _ edit: BlockEdit, by seconds: Double) {
+        beginGesture()
+        guard let original = gestureStart?.notes.first(where: { $0.id == id }) else { return }
+        let map = timeMap
+        let limit = sourceDuration
+        func moved(_ time: Double) -> Double {
+            map.sourceTime(at: map.outputTime(at: time) + seconds)
+        }
+        update { edits in
+            guard let index = edits.notes.firstIndex(where: { $0.id == id }) else { return }
+            switch edit {
+            case .move:
+                edits.notes[index].start = min(max(moved(original.start), 0), limit - original.duration)
+            case .trimStart:
+                let start = min(max(moved(original.start), 0), original.end - 0.5)
+                edits.notes[index].start = start
+                edits.notes[index].duration = original.end - start
+            case .trimEnd:
+                edits.notes[index].duration = max(min(moved(original.end), limit), original.start + 0.5) - original.start
+            }
+        }
+    }
+
     // MARK: - Audio
 
     /// Volume and mute for a timeline audio row: one of the recording's own tracks or an imported file.
@@ -589,6 +652,17 @@ final class EditorModel {
             cursorPathSmoothing = smoothing
         }
 
+        var images: [UUID: CIImage] = [:]
+        for note in edits.notes {
+            if noteImages[note.text] == nil {
+                noteImages[note.text] = NoteImage.make(text: note.text, canvasSize: canvasSize)
+            }
+            images[note.id] = noteImages[note.text]
+        }
+        // Forget images of text that's no longer used, e.g. from typing.
+        let texts = Set(edits.notes.map(\.text))
+        noteImages = noteImages.filter { texts.contains($0.key) }
+
         let renderer = FrameRenderer(
             videoSize: videoSize,
             cursorPath: cursorPath,
@@ -598,6 +672,8 @@ final class EditorModel {
             zoomSegments: edits.zooms,
             cameraPath: cameraPath,
             firstFrame: firstFrame,
+            notes: edits.notes,
+            noteImages: images,
             timeMap: scene.timeMap
         )
         item.videoComposition = scene.videoComposition(renderer: renderer)

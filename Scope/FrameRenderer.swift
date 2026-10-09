@@ -25,6 +25,9 @@ nonisolated struct FrameRenderer: @unchecked Sendable {
     let cameraPath: CursorPath?
     /// Shown before the recording's first video frame arrives, instead of a black frame.
     let firstFrame: CIImage?
+    let notes: [Note]
+    /// Each note drawn as a pill, by `Note.id`.
+    let noteImages: [UUID: CIImage]
     /// Converts the final video's time to the recording's, which the cursor, clicks and zooms use.
     /// `nil` means the two are the same.
     let timeMap: TimeMap?
@@ -51,9 +54,42 @@ nonisolated struct FrameRenderer: @unchecked Sendable {
             frame = cursor.composited(over: frame)
         }
         let video = frame.cropped(to: videoRect)
-        let canvas = settings.background.colors == nil ? zoom(video, at: time) : placeOnBackground(video, at: time)
-        guard settings.webcamVisible, let webcam, let bubble = bubble(webcam) else { return canvas }
-        return bubble.composited(over: canvas).cropped(to: CGRect(origin: .zero, size: canvasSize))
+        var canvas = settings.background.colors == nil ? zoom(video, at: time) : placeOnBackground(video, at: time)
+        if settings.webcamVisible, let webcam, let bubble = bubble(webcam) {
+            canvas = bubble.composited(over: canvas)
+        }
+        for note in notes {
+            if let layer = noteLayer(note, at: time) {
+                canvas = layer.composited(over: canvas)
+            }
+        }
+        return canvas.cropped(to: CGRect(origin: .zero, size: canvasSize))
+    }
+
+    /// How long notes take to fade in and out.
+    private static let noteFade = 0.25
+
+    /// A note at its place on the frame while it's showing, fading in and out at its ends.
+    private func noteLayer(_ note: Note, at time: Double) -> CIImage? {
+        guard time >= note.start, time <= note.end, let image = noteImages[note.id] else { return nil }
+        let opacity = min(1, (time - note.start) / Self.noteFade, (note.end - time) / Self.noteFade)
+
+        let center = Self.noteCenter(note, size: image.extent.size, canvas: canvasSize)
+        let placed = image.transformed(by: CGAffineTransform(
+            translationX: center.x - image.extent.width / 2,
+            y: canvasSize.height - center.y - image.extent.height / 2
+        ))
+        return placed.applyingFilter("CIColorMatrix", parameters: [
+            "inputAVector": CIVector(x: 0, y: 0, z: 0, w: opacity),
+        ])
+    }
+
+    /// A note's centre in pixels from the top left, kept far enough from the edges that it stays in the frame.
+    static func noteCenter(_ note: Note, size: CGSize, canvas: CGSize) -> CGPoint {
+        CGPoint(
+            x: min(max(note.x * canvas.width, size.width / 2), canvas.width - size.width / 2),
+            y: min(max(note.y * canvas.height, size.height / 2), canvas.height - size.height / 2)
+        )
     }
 
     /// The webcam as a round (or rounded square) bubble with a thin rim and a soft shadow. It sits on
