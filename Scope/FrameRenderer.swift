@@ -50,7 +50,8 @@ nonisolated struct FrameRenderer: @unchecked Sendable {
         if let cursor = cursorLayer(at: time) {
             frame = cursor.composited(over: frame)
         }
-        let canvas = placeOnBackground(zoom(frame.cropped(to: videoRect), at: time))
+        let video = frame.cropped(to: videoRect)
+        let canvas = settings.background.colors == nil ? zoom(video, at: time) : placeOnBackground(video, at: time)
         guard settings.webcamVisible, let webcam, let bubble = bubble(webcam) else { return canvas }
         return bubble.composited(over: canvas).cropped(to: CGRect(origin: .zero, size: canvasSize))
     }
@@ -80,18 +81,26 @@ nonisolated struct FrameRenderer: @unchecked Sendable {
 
         let rimWidth = max(diameter * 0.015, 2)
         let rim = roundedRectangle(rect.insetBy(dx: -rimWidth, dy: -rimWidth), radius: radius + rimWidth, color: CIColor(red: 1, green: 1, blue: 1, alpha: 0.85))
+        let bubble = face.composited(over: rim)
+        guard settings.webcamShadow else { return bubble }
+
         let shadow = roundedRectangle(rect.offsetBy(dx: 0, dy: -diameter * 0.03), radius: radius, color: CIColor(red: 0, green: 0, blue: 0, alpha: 0.4))
             .applyingGaussianBlur(sigma: diameter * 0.05)
-
-        return face.composited(over: rim).composited(over: shadow)
+        return bubble.composited(over: shadow)
     }
 
-    /// Scales the frame up around the camera's focus point. The focus is kept far enough from the
-    /// edges that the zoomed view never shows past the edge of the recording.
-    private func zoom(_ frame: CIImage, at time: Double) -> CIImage {
-        guard settings.autoZoom, settings.zoomLevel > 1 else { return frame }
+    /// How far zoomed in the view is at `time`, from 0 to 1.
+    private func zoomAmount(at time: Double) -> Double {
+        guard settings.autoZoom, settings.zoomLevel > 1 else { return 0 }
         let amount = AutoZoom.amount(at: time, segments: zoomSegments, transition: settings.zoomTransition)
-        guard amount > 0.001 else { return frame }
+        return amount > 0.001 ? amount : 0
+    }
+
+    /// Without a background: scales the frame up around the camera's focus point. The focus is kept
+    /// far enough from the edges that the zoomed view never shows past the edge of the recording.
+    private func zoom(_ frame: CIImage, at time: Double) -> CIImage {
+        let amount = zoomAmount(at: time)
+        guard amount > 0 else { return frame }
 
         let scale = 1 + (settings.zoomLevel - 1) * amount
         let visible = CGSize(width: videoSize.width / scale, height: videoSize.height / scale)
@@ -109,9 +118,13 @@ nonisolated struct FrameRenderer: @unchecked Sendable {
         return frame.transformed(by: transform).cropped(to: CGRect(origin: .zero, size: videoSize))
     }
 
-    /// Shrinks the video into the padded area of the canvas, rounds its corners and puts it
-    /// on the background with a soft shadow.
-    private func placeOnBackground(_ video: CIImage) -> CIImage {
+    /// Shrinks the video into the padded area of the canvas, rounds its corners and puts it on the
+    /// background with a soft shadow, like a window.
+    ///
+    /// Zooming moves the whole window towards the camera, so the padding slides away and the window
+    /// can fill the frame. The background zooms the same way but only `parallax` as much, which
+    /// gives a sense of depth.
+    private func placeOnBackground(_ video: CIImage, at time: Double) -> CIImage {
         guard let (topLeft, bottomRight) = settings.background.colors else { return video }
 
         let canvas = CGRect(origin: .zero, size: canvasSize)
@@ -137,13 +150,7 @@ nonisolated struct FrameRenderer: @unchecked Sendable {
             kCIInputMaskImageKey: roundedRectangle(frame, radius: radius, color: .white),
         ])
 
-        let gradient = CIFilter.linearGradient()
-        gradient.point0 = CGPoint(x: canvas.minX, y: canvas.maxY)
-        gradient.point1 = CGPoint(x: canvas.maxX, y: canvas.minY)
-        gradient.color0 = CIColor(topLeft)
-        gradient.color1 = CIColor(bottomRight)
-        var result = (gradient.outputImage ?? CIImage(color: CIColor(topLeft))).cropped(to: canvas)
-
+        var window = rounded
         if settings.shadow {
             let shadow = roundedRectangle(
                 frame.offsetBy(dx: 0, dy: -shorterSide * 0.01),
@@ -151,10 +158,52 @@ nonisolated struct FrameRenderer: @unchecked Sendable {
                 color: CIColor(red: 0, green: 0, blue: 0, alpha: 0.45)
             )
             .applyingGaussianBlur(sigma: shorterSide * 0.02)
-            result = shadow.composited(over: result)
+            window = rounded.composited(over: shadow)
         }
 
-        return rounded.composited(over: result).cropped(to: canvas)
+        // The gradient isn't cropped until the end, so it still fills the frame once it's moved.
+        let gradient = CIFilter.linearGradient()
+        gradient.point0 = CGPoint(x: canvas.minX, y: canvas.maxY)
+        gradient.point1 = CGPoint(x: canvas.maxX, y: canvas.minY)
+        gradient.color0 = CIColor(topLeft)
+        gradient.color1 = CIColor(bottomRight)
+        var background = gradient.outputImage ?? CIImage(color: CIColor(topLeft))
+
+        let amount = zoomAmount(at: time)
+        if amount > 0 {
+            // Fully zoomed in, the screen is magnified `zoomLevel` times, as without a background.
+            let windowScale = 1 + (settings.zoomLevel / scale - 1) * amount
+            let focusFraction = cameraPath?.position(at: time) ?? CGPoint(x: 0.5, y: 0.5)
+            let focus = CGPoint(x: frame.minX + focusFraction.x * frame.width, y: frame.minY + (1 - focusFraction.y) * frame.height)
+
+            // Bring the focus point towards the middle as the zoom grows, but once the window is big
+            // enough to fill the frame, never let the background show at its edges.
+            // Where possible, keep the window's rounded corners just outside the frame too.
+            var target = CGPoint(x: focus.x + (canvas.midX - focus.x) * amount, y: focus.y + (canvas.midY - focus.y) * amount)
+            let cornerMargin = radius * windowScale * 0.3
+            if frame.width * windowScale >= canvas.width {
+                let margin = frame.width * windowScale >= canvas.width + 2 * cornerMargin ? cornerMargin : 0
+                target.x = min(max(target.x, canvas.maxX + margin - (frame.maxX - focus.x) * windowScale), canvas.minX - margin - (frame.minX - focus.x) * windowScale)
+            }
+            if frame.height * windowScale >= canvas.height {
+                let margin = frame.height * windowScale >= canvas.height + 2 * cornerMargin ? cornerMargin : 0
+                target.y = min(max(target.y, canvas.maxY + margin - (frame.maxY - focus.y) * windowScale), canvas.minY - margin - (frame.minY - focus.y) * windowScale)
+            }
+
+            window = window.transformed(by: Self.zoom(around: focus, by: windowScale, to: target))
+            let depth = settings.parallax
+            let backgroundTarget = CGPoint(x: focus.x + (target.x - focus.x) * depth, y: focus.y + (target.y - focus.y) * depth)
+            background = background.transformed(by: Self.zoom(around: focus, by: 1 + (windowScale - 1) * depth, to: backgroundTarget))
+        }
+
+        return window.composited(over: background).cropped(to: canvas)
+    }
+
+    /// Scales by `scale` around `point` and moves `point` to `target`.
+    private static func zoom(around point: CGPoint, by scale: CGFloat, to target: CGPoint) -> CGAffineTransform {
+        CGAffineTransform(translationX: -point.x, y: -point.y)
+            .concatenating(CGAffineTransform(scaleX: scale, y: scale))
+            .concatenating(CGAffineTransform(translationX: target.x, y: target.y))
     }
 
     private func roundedRectangle(_ rect: CGRect, radius: CGFloat, color: CIColor) -> CIImage {

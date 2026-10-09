@@ -31,6 +31,7 @@ nonisolated struct EditorSettings: Equatable, Sendable {
     /// Width of the bubble as a fraction of the frame's shorter side.
     var webcamSize = 0.22
     var webcamShape = BubbleShape.circle
+    var webcamShadow = true
 
     /// What the recording sits on. With `.none` the video fills the frame and the settings below do nothing.
     var background = Background.none
@@ -39,6 +40,9 @@ nonisolated struct EditorSettings: Equatable, Sendable {
     /// Corner radius of the recording, in screen points.
     var cornerRadius = 12.0
     var shadow = true
+    /// How much the background zooms along with the recording, from 0 (stays still) to 1 (as much
+    /// as the recording). Less than the recording gives a sense of depth.
+    var parallax = 0.3
 
     /// The bubble's width in pixels on a frame of `canvas` size.
     func webcamDiameter(in canvas: CGSize) -> CGFloat {
@@ -61,8 +65,8 @@ extension EditorSettings: Codable {
     private enum CodingKeys: String, CodingKey {
         case cursorSmoothing, cursorSize, showClicks
         case autoZoom, zoomLevel, zoomTransition
-        case webcamVisible, webcamX, webcamY, webcamSize, webcamShape
-        case background, padding, cornerRadius, shadow
+        case webcamVisible, webcamX, webcamY, webcamSize, webcamShape, webcamShadow
+        case background, padding, cornerRadius, shadow, parallax
     }
 
     /// Any setting missing from the file keeps its default, so projects saved by older versions still open.
@@ -85,10 +89,12 @@ extension EditorSettings: Codable {
         read(.webcamY, into: &webcamY)
         read(.webcamSize, into: &webcamSize)
         read(.webcamShape, into: &webcamShape)
+        read(.webcamShadow, into: &webcamShadow)
         read(.background, into: &background)
         read(.padding, into: &padding)
         read(.cornerRadius, into: &cornerRadius)
         read(.shadow, into: &shadow)
+        read(.parallax, into: &parallax)
     }
 }
 

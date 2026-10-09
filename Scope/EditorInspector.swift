@@ -56,6 +56,7 @@ struct EditorInspector: View {
                             }
                         }
                         .pickerStyle(.segmented)
+                        Toggle("Shadow", isOn: $settings.webcamShadow)
                     }
                     .disabled(!settings.webcamVisible)
                 } header: {
@@ -77,6 +78,10 @@ struct EditorInspector: View {
                         "\(Int($0.rounded()))"
                     }
                     Toggle("Shadow", isOn: $settings.shadow)
+                    LabeledSlider("Parallax", value: $settings.parallax, in: 0...1) {
+                        "\(Int(($0 * 100).rounded()))%"
+                    }
+                    .help("How much the background zooms along with the recording")
                 }
                 .disabled(settings.background == .none)
             }
