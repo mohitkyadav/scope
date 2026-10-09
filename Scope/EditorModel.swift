@@ -3,6 +3,7 @@
 //  Scope
 //
 
+import AppKit
 import AVFoundation
 import Combine
 import CoreImage
@@ -91,6 +92,7 @@ final class EditorModel {
     private var saveTask: Task<Void, Never>?
     private var timeObserver: Any?
     private var statusTask: Task<Void, Never>?
+    private var terminationObserver: (any NSObjectProtocol)?
 
     /// The timeline as it was when the current drag began, for undo.
     private var gestureStart: TimelineEdits?
@@ -153,13 +155,25 @@ final class EditorModel {
                 self?.isPlaying = status != .paused
             }
         }
+
+        // Changes are saved half a second after they're made; quitting sooner still keeps them.
+        terminationObserver = NotificationCenter.default.addObserver(
+            forName: NSApplication.willTerminateNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated {
+                self?.saveNow()
+            }
+        }
     }
 
     func close() {
-        if saveTask != nil {
-            saveTask?.cancel()
-            save()
+        saveNow()
+        if let terminationObserver {
+            NotificationCenter.default.removeObserver(terminationObserver)
         }
+        terminationObserver = nil
         player.pause()
         if let timeObserver {
             player.removeTimeObserver(timeObserver)
@@ -701,6 +715,13 @@ final class EditorModel {
             guard !Task.isCancelled else { return }
             save()
         }
+    }
+
+    /// Saves straight away if there are unsaved changes.
+    private func saveNow() {
+        guard saveTask != nil else { return }
+        saveTask?.cancel()
+        save()
     }
 
     private func save() {
