@@ -9,6 +9,7 @@ import SwiftUI
 struct ContentView: View {
     @State private var permission = ScreenRecordingPermission()
     @State private var displayList = DisplayList()
+    @Environment(Recorder.self) private var recorder
     @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
@@ -35,14 +36,15 @@ struct ContentView: View {
             HStack(spacing: 16) {
                 if permission.isGranted {
                     DisplayPicker(displayList: displayList)
+                        .disabled(recorder.state != .idle)
                 }
 
                 Spacer(minLength: 0)
 
-                RecordButton {
-                    // Recording starts in step 1.2.
+                RecordButton(isRecording: recorder.isRecording, elapsed: recorder.elapsed) {
+                    Task { await toggleRecording() }
                 }
-                .disabled(!permission.isGranted || displayList.selected == nil)
+                .disabled(!canRecord)
             }
             .padding(20)
         }
@@ -56,6 +58,17 @@ struct ContentView: View {
             guard permission.isGranted else { return }
             await displayList.load()
         }
+        .alert(
+            "Recording failed",
+            isPresented: Binding(
+                get: { recorder.errorMessage != nil },
+                set: { if !$0 { recorder.errorMessage = nil } }
+            )
+        ) {
+            Button("OK") {}
+        } message: {
+            Text(recorder.errorMessage ?? "")
+        }
         .task {
             // Reload when a monitor is plugged in, unplugged or changes resolution.
             for await _ in NotificationCenter.default.notifications(named: NSApplication.didChangeScreenParametersNotification) {
@@ -64,8 +77,31 @@ struct ContentView: View {
             }
         }
     }
+
+    private var canRecord: Bool {
+        switch recorder.state {
+        case .idle: permission.isGranted && displayList.selected != nil
+        case .recording: true
+        case .countingDown, .stopping: false
+        }
+    }
+
+    private func toggleRecording() async {
+        if recorder.isRecording {
+            await recorder.stop()
+            return
+        }
+
+        guard let filter = displayList.selectedFilter else { return }
+        do {
+            await recorder.start(filter: filter, outputURL: try RecordingLibrary.newRecordingURL())
+        } catch {
+            recorder.errorMessage = error.localizedDescription
+        }
+    }
 }
 
 #Preview {
     ContentView()
+        .environment(Recorder())
 }

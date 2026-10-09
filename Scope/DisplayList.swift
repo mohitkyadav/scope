@@ -22,13 +22,25 @@ final class DisplayList {
     private(set) var displays: [Display] = []
     private(set) var errorMessage: String?
     var selectedID: CGDirectDisplayID?
+    private var ownApp: SCRunningApplication?
 
     var selected: Display? { displays.first { $0.id == selectedID } }
+
+    /// What to record for the selected display. Scope's own windows are left out of the video.
+    var selectedFilter: SCContentFilter? {
+        guard let selected else { return nil }
+        return SCContentFilter(
+            display: selected.scDisplay,
+            excludingApplications: ownApp.map { [$0] } ?? [],
+            exceptingWindows: []
+        )
+    }
 
     func load() async {
         do {
             let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
             displays = content.displays.map(Display.init)
+            ownApp = content.applications.first { $0.bundleIdentifier == Bundle.main.bundleIdentifier }
             errorMessage = nil
         } catch {
             displays = []
