@@ -21,6 +21,9 @@ final class AudioSettings {
     var selectedMicrophoneID: String? {
         didSet { UserDefaults.standard.set(selectedMicrophoneID, forKey: Keys.microphoneID) }
     }
+    var systemAudioEnabled: Bool {
+        didSet { UserDefaults.standard.set(systemAudioEnabled, forKey: Keys.systemAudioEnabled) }
+    }
 
     private(set) var microphones: [Microphone] = []
     private(set) var microphoneAccess = AVCaptureDevice.authorizationStatus(for: .audio)
@@ -29,6 +32,7 @@ final class AudioSettings {
         let defaults = UserDefaults.standard
         microphoneEnabled = defaults.bool(forKey: Keys.microphoneEnabled)
         selectedMicrophoneID = defaults.string(forKey: Keys.microphoneID)
+        systemAudioEnabled = defaults.bool(forKey: Keys.systemAudioEnabled)
     }
 
     var selectedMicrophone: Microphone? { microphones.first { $0.id == selectedMicrophoneID } }
@@ -69,5 +73,6 @@ final class AudioSettings {
     private enum Keys {
         static let microphoneEnabled = "microphoneEnabled"
         static let microphoneID = "microphoneID"
+        static let systemAudioEnabled = "systemAudioEnabled"
     }
 }

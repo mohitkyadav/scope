@@ -35,7 +35,15 @@ final class Recorder: NSObject {
     var isRecording: Bool { state == .recording }
 
     /// `microphoneID` is the capture device to record alongside the screen, or `nil` for no microphone.
-    func start(filter: SCContentFilter, microphoneID: String?, outputURL: URL, countdownScreen: NSScreen?) async {
+    /// `systemAudio` records the sound the computer plays (from every app for a display, or from the
+    /// window's app for a window), but never Scope's own.
+    func start(
+        filter: SCContentFilter,
+        microphoneID: String?,
+        systemAudio: Bool,
+        outputURL: URL,
+        countdownScreen: NSScreen?
+    ) async {
         guard state == .idle else { return }
 
         if let countdownScreen {
@@ -56,6 +64,13 @@ final class Recorder: NSObject {
         configuration.minimumFrameInterval = CMTime(value: 1, timescale: 60)
         configuration.queueDepth = 6
         configuration.showsCursor = true
+
+        if systemAudio {
+            configuration.capturesAudio = true
+            configuration.excludesCurrentProcessAudio = true
+            configuration.sampleRate = 48_000
+            configuration.channelCount = 2
+        }
 
         if let microphoneID {
             configuration.captureMicrophone = true

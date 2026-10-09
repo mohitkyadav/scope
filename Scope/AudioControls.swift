@@ -38,6 +38,14 @@ struct AudioControls: View {
                     .frame(maxWidth: 200)
                 }
             }
+
+            Divider()
+                .frame(height: 16)
+                .padding(.horizontal, 4)
+
+            Toggle(isOn: $settings.systemAudioEnabled) {
+                Label("System audio", systemImage: "speaker.wave.2")
+            }
         }
     }
 }

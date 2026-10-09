@@ -137,6 +137,7 @@ struct ContentView: View {
                 await recorder.start(
                     filter: filter,
                     microphoneID: audio.microphoneToRecord?.id,
+                    systemAudio: audio.systemAudioEnabled,
                     outputURL: try RecordingLibrary.newRecordingURL(),
                     countdownScreen: sources.selectedScreen
                 )
