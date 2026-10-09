@@ -112,6 +112,27 @@ private struct TimelineToolbar: View {
             .disabled(!model.canDeleteSelection)
             .help("Delete the selected item (Delete)")
 
+            Menu {
+                ForEach(EditorModel.speeds, id: \.self) { speed in
+                    Button {
+                        if let clip = model.selectedClip {
+                            model.setSpeed(speed, ofClip: clip.id, undoManager: undoManager)
+                        }
+                    } label: {
+                        if model.selectedClip?.speed == speed {
+                            Label(String(format: "%g×", speed), systemImage: "checkmark")
+                        } else {
+                            Text(String(format: "%g×", speed))
+                        }
+                    }
+                }
+            } label: {
+                Label(model.selectedClip.map { String(format: "%g×", $0.speed) } ?? "Speed", systemImage: "gauge.with.dots.needle.67percent")
+            }
+            .fixedSize()
+            .disabled(model.selectedClip == nil)
+            .help("Play the selected clip faster or slower. Split first to change part of a clip.")
+
             Button {
                 model.addZoom(undoManager: undoManager)
             } label: {

@@ -309,6 +309,21 @@ final class EditorModel {
         }
     }
 
+    static let speeds = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 2, 3, 4]
+
+    /// The selected clip, if a clip is selected.
+    var selectedClip: Clip? {
+        guard case .clip(let id) = selection else { return nil }
+        return edits.clips.first { $0.id == id }
+    }
+
+    func setSpeed(_ speed: Double, ofClip id: UUID, undoManager: UndoManager?) {
+        perform("Change Speed", undoManager: undoManager) { edits in
+            guard let index = edits.clips.firstIndex(where: { $0.id == id }) else { return }
+            edits.clips[index].speed = speed
+        }
+    }
+
     /// Deletes whatever is selected. The last clip can't be deleted.
     func deleteSelection(undoManager: UndoManager?) {
         guard let selection else { return }
