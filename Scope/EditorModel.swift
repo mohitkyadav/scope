@@ -18,8 +18,20 @@ final class EditorModel {
     private(set) var isPlaying = false
     private(set) var errorMessage: String?
 
+    var settings = EditorSettings() {
+        didSet {
+            if settings != oldValue {
+                settingsChanged()
+            }
+        }
+    }
+
     private var videoSize: CGSize = .zero
+    private var cursorTrack: CursorTrack?
     private var cursorPath: CursorPath?
+    /// The smoothing `cursorPath` was built with, so it's only rebuilt when that changes.
+    private var cursorPathSmoothing: Double?
+    private var renderTask: Task<Void, Never>?
     private var pixelsPerPoint: CGFloat = 2
     private var sprite: CursorSprite?
 
@@ -46,7 +58,7 @@ final class EditorModel {
 
         // Without cursor data the video still plays, just with no cursor drawn.
         if let track = try? CursorTrack.read(from: project.cursorURL) {
-            cursorPath = CursorPath(track: track)
+            cursorTrack = track
             if track.areaWidth > 0 {
                 pixelsPerPoint = videoSize.width / track.areaWidth
             }
@@ -94,15 +106,34 @@ final class EditorModel {
         player.play()
     }
 
+    private func settingsChanged() {
+        renderTask?.cancel()
+        renderTask = Task {
+            // Dragging a slider changes settings many times a second; rebuild once it pauses briefly.
+            try? await Task.sleep(for: .milliseconds(30))
+            guard !Task.isCancelled else { return }
+            await applyRenderer()
+        }
+    }
+
     /// Rebuilds the frame renderer and hands it to the player. Called whenever the look changes.
     private func applyRenderer() async {
         guard let item = player.currentItem else { return }
+
+        if let cursorTrack, cursorPathSmoothing != settings.cursorSmoothing {
+            let smoothing = settings.cursorSmoothing
+            cursorPath = await Task.detached {
+                CursorPath(track: cursorTrack, smoothing: smoothing)
+            }.value
+            cursorPathSmoothing = smoothing
+        }
 
         let renderer = FrameRenderer(
             videoSize: videoSize,
             cursorPath: cursorPath,
             sprite: sprite,
-            pixelsPerPoint: pixelsPerPoint
+            pixelsPerPoint: pixelsPerPoint,
+            settings: settings
         )
         do {
             item.videoComposition = try await Self.makeVideoComposition(for: item.asset, renderer: renderer)

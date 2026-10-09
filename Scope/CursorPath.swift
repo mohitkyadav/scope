@@ -14,8 +14,10 @@ nonisolated struct CursorPath: Sendable {
     private let points: [CGPoint]
     let clicks: [CursorTrack.Click]
 
-    init(track: CursorTrack) {
-        points = Self.resample(track)
+    /// `smoothing` runs from 0 (the recorded path as is) to 1 (the smoothest).
+    init(track: CursorTrack, smoothing: Double = 0) {
+        let raw = Self.resample(track)
+        points = Self.smooth(raw, amount: smoothing, clicks: track.clicks)
         clicks = track.clicks
     }
 
@@ -62,6 +64,47 @@ nonisolated struct CursorPath: Sendable {
             points.append(point)
         }
         return points
+    }
+
+    /// Averages each position with its neighbours in time (a Gaussian blur over up to 0.2 s each way),
+    /// which takes out jitter and small wobbles. Around each click the path eases back to the
+    /// recorded one, so clicks still land exactly where they happened.
+    private static func smooth(_ raw: [CGPoint], amount: Double, clicks: [CursorTrack.Click]) -> [CGPoint] {
+        let sigma = amount * 0.2 * rate
+        guard sigma >= 0.5, raw.count > 1 else { return raw }
+
+        let radius = Int((sigma * 3).rounded(.up))
+        let kernel = (-radius...radius).map { exp(-0.5 * pow(Double($0) / sigma, 2)) }
+        let kernelTotal = kernel.reduce(0, +)
+
+        var smoothed = [CGPoint](repeating: .zero, count: raw.count)
+        for index in raw.indices {
+            var x = 0.0
+            var y = 0.0
+            for (offset, weight) in kernel.enumerated() {
+                let neighbour = raw[min(max(index + offset - radius, 0), raw.count - 1)]
+                x += neighbour.x * weight
+                y += neighbour.y * weight
+            }
+            smoothed[index] = CGPoint(x: x / kernelTotal, y: y / kernelTotal)
+        }
+
+        let ease = 0.15 * rate
+        for click in clicks {
+            let start = click.t * rate
+            let end = (click.t + click.duration) * rate
+            let from = max(Int(start - 3 * ease), 0)
+            let to = min(Int(end + 3 * ease) + 1, raw.count - 1)
+            guard from <= to else { continue }
+
+            for index in from...to {
+                let position = Double(index)
+                let distance = position < start ? start - position : max(position - end, 0)
+                let weight = exp(-0.5 * pow(distance / ease, 2))
+                smoothed[index] = mix(smoothed[index], raw[index], weight)
+            }
+        }
+        return smoothed
     }
 
     private static func mix(_ a: CGPoint, _ b: CGPoint, _ fraction: Double) -> CGPoint {

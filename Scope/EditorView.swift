@@ -23,15 +23,24 @@ struct EditorView: View {
                     description: Text(errorMessage)
                 )
             } else {
-                PlayerView(player: model.player)
-                    .background(.black)
+                HStack(spacing: 0) {
+                    VStack(spacing: 0) {
+                        PlayerView(player: model.player)
+                            .background(.black)
 
-                Divider()
+                        Divider()
 
-                TransportBar(model: model)
+                        TransportBar(model: model)
+                    }
+
+                    Divider()
+
+                    EditorInspector(settings: $model.settings)
+                        .frame(width: 300)
+                }
             }
         }
-        .frame(minWidth: 720, minHeight: 480)
+        .frame(minWidth: 900, minHeight: 520)
         .navigationTitle(model.project.name)
         .task {
             await model.load()
