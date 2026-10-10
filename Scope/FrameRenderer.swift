@@ -159,15 +159,13 @@ nonisolated struct FrameRenderer: @unchecked Sendable {
         return frame.transformed(by: transform).cropped(to: CGRect(origin: .zero, size: videoSize))
     }
 
-    /// How far into the padding the window comes forward when fully zoomed, from 0 to 1.
-    private static let windowZoomShare = 0.5
-
     /// Shrinks the video into the padded area of the canvas, rounds its corners and puts it on the
     /// background with a soft shadow, like a window.
     ///
-    /// Zooming brings the window forward into part of the padding, and the rest of the magnification
-    /// happens inside it, so the background always stays in view. The background zooms too, but only
-    /// `parallax` as much as the window, which gives a sense of depth.
+    /// Zooming works like a camera moving in: the whole window comes forward towards the point being
+    /// zoomed in on, the padding and background slide out of view, and once the window fills the
+    /// frame no background shows at all. The background zooms too, but only `parallax` as much as
+    /// the window, which gives a sense of depth while zooming in and out.
     private func placeOnBackground(_ video: CIImage, at time: Double) -> CIImage {
         guard let (topLeft, bottomRight) = settings.background.colors else { return video }
 
@@ -187,11 +185,9 @@ nonisolated struct FrameRenderer: @unchecked Sendable {
         )
         let radius = settings.cornerRadius * pixelsPerPoint * scale
 
-        // Split the zoom between the window coming forward and the recording zooming inside it.
+        // Fully zoomed in, the screen is magnified `zoomLevel` times, the same as without a background.
         let amount = zoomAmount(at: time)
-        let room = min(canvas.width / frame.width, canvas.height / frame.height)
-        let windowScale = 1 + (room - 1) * Self.windowZoomShare * amount
-        let video = zoom(video, by: zoomScale(at: time) / windowScale, at: time)
+        let windowScale = 1 + (settings.zoomLevel / scale - 1) * amount
 
         let placed = video.transformed(by: CGAffineTransform(scaleX: scale, y: scale)
             .concatenating(CGAffineTransform(translationX: frame.minX, y: frame.minY)))
@@ -220,28 +216,26 @@ nonisolated struct FrameRenderer: @unchecked Sendable {
         var background = gradient.outputImage ?? CIImage(color: CIColor(topLeft))
 
         if windowScale > 1.0001 {
-            // Grow the window around the point being zoomed in on, then nudge it back so it stays
-            // whole inside the frame.
             let focusFraction = camera?.focus(at: time) ?? CGPoint(x: 0.5, y: 0.5)
-            let focus = CGPoint(
-                x: frame.minX + min(max(focusFraction.x, 0), 1) * frame.width,
-                y: frame.minY + (1 - min(max(focusFraction.y, 0), 1)) * frame.height
-            )
-            let grown = CGRect(
-                x: focus.x + (frame.minX - focus.x) * windowScale,
-                y: focus.y + (frame.minY - focus.y) * windowScale,
-                width: frame.width * windowScale,
-                height: frame.height * windowScale
-            )
-            let shift = CGPoint(
-                x: max(canvas.minX - grown.minX, 0) + min(canvas.maxX - grown.maxX, 0),
-                y: max(canvas.minY - grown.minY, 0) + min(canvas.maxY - grown.maxY, 0)
-            )
-            let target = CGPoint(x: focus.x + shift.x, y: focus.y + shift.y)
+            let focus = CGPoint(x: frame.minX + focusFraction.x * frame.width, y: frame.minY + (1 - focusFraction.y) * frame.height)
+
+            // Bring the focus point towards the middle as the zoom grows. Once the window is big enough
+            // to fill the frame, don't let background show at its edges, and where possible keep its
+            // rounded corners just outside the frame too.
+            var target = CGPoint(x: focus.x + (canvas.midX - focus.x) * amount, y: focus.y + (canvas.midY - focus.y) * amount)
+            let cornerMargin = radius * windowScale * 0.3
+            if frame.width * windowScale >= canvas.width {
+                let margin = frame.width * windowScale >= canvas.width + 2 * cornerMargin ? cornerMargin : 0
+                target.x = min(max(target.x, canvas.maxX + margin - (frame.maxX - focus.x) * windowScale), canvas.minX - margin - (frame.minX - focus.x) * windowScale)
+            }
+            if frame.height * windowScale >= canvas.height {
+                let margin = frame.height * windowScale >= canvas.height + 2 * cornerMargin ? cornerMargin : 0
+                target.y = min(max(target.y, canvas.maxY + margin - (frame.maxY - focus.y) * windowScale), canvas.minY - margin - (frame.minY - focus.y) * windowScale)
+            }
             window = window.transformed(by: Self.zoom(around: focus, by: windowScale, to: target))
 
             let depth = settings.parallax
-            let backgroundTarget = CGPoint(x: focus.x + shift.x * depth, y: focus.y + shift.y * depth)
+            let backgroundTarget = CGPoint(x: focus.x + (target.x - focus.x) * depth, y: focus.y + (target.y - focus.y) * depth)
             background = background.transformed(by: Self.zoom(around: focus, by: 1 + (windowScale - 1) * depth, to: backgroundTarget))
         }
 
