@@ -54,6 +54,17 @@ struct EditorView: View {
                         zoomCount: model.edits.zooms.count,
                         hasWebcam: model.hasWebcam,
                         suggestZooms: { model.suggestZooms(undoManager: undoManager) },
+                        selectedZoom: model.selectedZoom,
+                        onZoomChange: { zoom, isDragging, actionName in
+                            model.updateZoom(zoom.id, actionName: actionName, undoManager: undoManager, isDragging: isDragging) { segment in
+                                segment.level = zoom.level
+                                segment.transition = zoom.transition
+                                segment.followsCursor = zoom.followsCursor
+                            }
+                        },
+                        onZoomSliderReleased: { actionName in
+                            model.endGesture(actionName, undoManager: undoManager)
+                        },
                         backgroundThumbnail: model.backgroundThumbnail,
                         chooseBackgroundImage: { isChoosingBackground = true },
                         noteText: model.selectedNote.map { note in

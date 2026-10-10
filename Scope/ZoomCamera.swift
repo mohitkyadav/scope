@@ -29,11 +29,12 @@ nonisolated struct ZoomCamera: Sendable {
 
     private let tracks: [Track]
 
-    /// `cursor` and `clicks` are in recording time, like the segments.
-    init(segments: [ZoomSegment], cursor: CursorPath?, clicks: [CursorTrack.Click], zoomLevel: Double) {
-        let visible = 1 / max(zoomLevel, 1)
+    /// `cursor` and `clicks` are in recording time, like the segments. Segments without their own
+    /// level use `defaultLevel`.
+    init(segments: [ZoomSegment], cursor: CursorPath?, clicks: [CursorTrack.Click], defaultLevel: Double) {
         tracks = segments.map { segment in
-            Self.track(for: segment, cursor: cursor, clicks: clicks, visible: visible)
+            let visible = 1 / max(segment.level ?? defaultLevel, 1)
+            return Self.track(for: segment, cursor: cursor, clicks: clicks, visible: visible)
         }
     }
 
@@ -54,6 +55,8 @@ nonisolated struct ZoomCamera: Sendable {
         }
         var camera = clamp(firstClick.map { CGPoint(x: $0.x, y: $0.y) } ?? cursorPosition(at: segment.start), visible: visible)
         var easedTarget = camera
+        // A zoom that doesn't follow the cursor stays where it started.
+        let follows = segment.followsCursor ?? true
 
         let step = 1 / rate
         // Two gentle smoothing stages, so the camera eases into a move instead of jolting.
@@ -63,6 +66,10 @@ nonisolated struct ZoomCamera: Sendable {
         points.reserveCapacity(count)
 
         for index in 0..<count {
+            guard follows else {
+                points.append(camera)
+                continue
+            }
             let time = segment.start + Double(index) * step
             let cursor = cursorPosition(at: time)
             var target = easedTarget

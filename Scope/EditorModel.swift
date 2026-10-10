@@ -400,6 +400,26 @@ final class EditorModel {
         perform("Suggest Zooms", undoManager: undoManager) { $0.zooms = zooms }
     }
 
+    var selectedZoom: ZoomSegment? {
+        guard case .zoom(let id) = selection else { return nil }
+        return edits.zooms.first { $0.id == id }
+    }
+
+    /// Changes one zoom's own settings. While a slider is dragged, pass `isDragging` and finish with
+    /// `endGesture`; otherwise each change is its own undoable step.
+    func updateZoom(_ id: UUID, actionName: String, undoManager: UndoManager?, isDragging: Bool = false, _ change: @escaping (inout ZoomSegment) -> Void) {
+        let apply: (inout TimelineEdits) -> Void = { edits in
+            if let index = edits.zooms.firstIndex(where: { $0.id == id }) {
+                change(&edits.zooms[index])
+            }
+        }
+        if isDragging {
+            update(apply)
+        } else {
+            perform(actionName, undoManager: undoManager, apply)
+        }
+    }
+
     /// Moves or resizes a zoom during a drag. `seconds` is how far it's been dragged along the final
     /// video; zooms keep their place in the recording, so the drag is converted back to recording time.
     func dragZoom(_ id: UUID, _ edit: BlockEdit, by seconds: Double) {
@@ -800,7 +820,7 @@ final class EditorModel {
         if let zoomCamera, zoomCamera.zooms == edits.zooms, zoomCamera.level == settings.zoomLevel {
             return zoomCamera.camera
         }
-        let camera = ZoomCamera(segments: edits.zooms, cursor: cameraCursor, clicks: cursorTrack?.clicks ?? [], zoomLevel: settings.zoomLevel)
+        let camera = ZoomCamera(segments: edits.zooms, cursor: cameraCursor, clicks: cursorTrack?.clicks ?? [], defaultLevel: settings.zoomLevel)
         zoomCamera = (camera, edits.zooms, settings.zoomLevel)
         return camera
     }

@@ -12,6 +12,11 @@ struct EditorInspector: View {
     let hasWebcam: Bool
     /// Replaces the timeline's zooms with ones placed around the clicks.
     var suggestZooms: () -> Void = {}
+    /// The selected zoom, and how to change it: the new zoom, whether a slider is still being
+    /// dragged, and the name of the change for undo.
+    var selectedZoom: ZoomSegment?
+    var onZoomChange: (ZoomSegment, Bool, String) -> Void = { _, _, _ in }
+    var onZoomSliderReleased: (String) -> Void = { _ in }
     /// A small copy of the image background, if one has been chosen.
     var backgroundThumbnail: NSImage?
     var chooseBackgroundImage: () -> Void = {}
@@ -23,6 +28,10 @@ struct EditorInspector: View {
 
     var body: some View {
         Form {
+            if let zoom = selectedZoom {
+                selectedZoomSection(zoom)
+            }
+
             if let noteText {
                 Section {
                     TextField("Text", text: noteText, axis: .vertical)
@@ -54,7 +63,7 @@ struct EditorInspector: View {
             } header: {
                 Text("Zoom")
             } footer: {
-                Text(zoomCount == 1 ? "1 zoom on the timeline." : "\(zoomCount) zooms on the timeline.")
+                Text("Defaults for \(zoomCount == 1 ? "the 1 zoom" : "the \(zoomCount) zooms") on the timeline. Select a zoom to give it its own settings.")
                     .foregroundStyle(.secondary)
             }
 
@@ -125,6 +134,66 @@ struct EditorInspector: View {
         .formStyle(.grouped)
         .onChange(of: isEditingNote) {
             onNoteEditingChanged(isEditingNote)
+        }
+    }
+}
+
+extension EditorInspector {
+    /// Settings for the zoom selected on the timeline, starting from the defaults until changed.
+    @ViewBuilder
+    fileprivate func selectedZoomSection(_ zoom: ZoomSegment) -> some View {
+        Section {
+            LabeledSlider(
+                "Level",
+                value: Binding(
+                    get: { zoom.level ?? settings.zoomLevel },
+                    set: { level in
+                        var changed = zoom
+                        changed.level = level
+                        onZoomChange(changed, true, "Change Zoom Level")
+                    }
+                ),
+                in: 1.25...3,
+                format: { String(format: "%.1f×", $0) },
+                onEditingChanged: { if !$0 { onZoomSliderReleased("Change Zoom Level") } }
+            )
+            LabeledSlider(
+                "Transition",
+                value: Binding(
+                    get: { zoom.transition ?? settings.zoomTransition },
+                    set: { transition in
+                        var changed = zoom
+                        changed.transition = transition
+                        onZoomChange(changed, true, "Change Zoom Transition")
+                    }
+                ),
+                in: 0.3...5,
+                format: { String(format: "%.1f s", $0) },
+                onEditingChanged: { if !$0 { onZoomSliderReleased("Change Zoom Transition") } }
+            )
+            Toggle("Follow cursor", isOn: Binding(
+                get: { zoom.followsCursor ?? true },
+                set: { follows in
+                    var changed = zoom
+                    changed.followsCursor = follows
+                    onZoomChange(changed, false, follows ? "Follow Cursor" : "Stop Following Cursor")
+                }
+            ))
+            LabeledContent("Settings") {
+                Button("Use Defaults") {
+                    var changed = zoom
+                    changed.level = nil
+                    changed.transition = nil
+                    changed.followsCursor = nil
+                    onZoomChange(changed, false, "Use Default Zoom Settings")
+                }
+                .disabled(!zoom.hasOwnSettings)
+            }
+        } header: {
+            Text("Selected Zoom")
+        } footer: {
+            Text(zoom.hasOwnSettings ? "This zoom has its own settings." : "Uses the zoom defaults below until you change something.")
+                .foregroundStyle(.secondary)
         }
     }
 }
@@ -203,18 +272,20 @@ struct LabeledSlider: View {
     @Binding var value: Double
     let range: ClosedRange<Double>
     let format: (Double) -> String
+    var onEditingChanged: (Bool) -> Void = { _ in }
 
-    init(_ title: String, value: Binding<Double>, in range: ClosedRange<Double>, format: @escaping (Double) -> String) {
+    init(_ title: String, value: Binding<Double>, in range: ClosedRange<Double>, format: @escaping (Double) -> String, onEditingChanged: @escaping (Bool) -> Void = { _ in }) {
         self.title = title
         _value = value
         self.range = range
         self.format = format
+        self.onEditingChanged = onEditingChanged
     }
 
     var body: some View {
         LabeledContent {
             HStack {
-                Slider(value: $value, in: range)
+                Slider(value: $value, in: range, onEditingChanged: onEditingChanged)
                 Text(format(value))
                     .monospacedDigit()
                     .foregroundStyle(.secondary)

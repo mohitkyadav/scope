@@ -130,15 +130,15 @@ nonisolated struct FrameRenderer: @unchecked Sendable {
     }
 
     /// How far zoomed in the view is at `time`, from 0 to 1.
-    private func zoomAmount(at time: Double) -> Double {
-        guard settings.autoZoom, settings.zoomLevel > 1 else { return 0 }
-        let amount = AutoZoom.amount(at: time, segments: zoomSegments, transition: settings.zoomTransition)
-        return amount > 0.001 ? amount : 0
+    private func zoomState(at time: Double) -> AutoZoom.State {
+        guard settings.autoZoom else { return AutoZoom.State() }
+        let state = AutoZoom.state(at: time, segments: zoomSegments, defaultLevel: settings.zoomLevel, defaultTransition: settings.zoomTransition)
+        return state.amount > 0.001 ? state : AutoZoom.State()
     }
 
     /// How much the recording is magnified at `time`: 1 when not zoomed, `zoomLevel` when fully zoomed.
     private func zoomScale(at time: Double) -> Double {
-        1 + (settings.zoomLevel - 1) * zoomAmount(at: time)
+        zoomState(at: time).scale
     }
 
     /// Scales the frame up by `scale` around the camera's focus point. The focus is kept far enough
@@ -188,8 +188,9 @@ nonisolated struct FrameRenderer: @unchecked Sendable {
         let radius = settings.cornerRadius * pixelsPerPoint * scale
 
         // Fully zoomed in, the screen is magnified `zoomLevel` times, the same as without a background.
-        let amount = zoomAmount(at: time)
-        let windowScale = 1 + (settings.zoomLevel / scale - 1) * amount
+        let zoom = zoomState(at: time)
+        let amount = zoom.amount
+        let windowScale = 1 + (zoom.level / scale - 1) * amount
 
         let placed = video.transformed(by: CGAffineTransform(scaleX: scale, y: scale)
             .concatenating(CGAffineTransform(translationX: frame.minX, y: frame.minY)))
