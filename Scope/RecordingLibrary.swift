@@ -66,6 +66,15 @@ final class RecordingLibrary {
         }
     }
 
+    /// Moves projects to the Trash, where they can still be restored, and refreshes the list.
+    func moveToTrash(_ projectURLs: some Collection<URL>) async throws {
+        for url in projectURLs {
+            try FileManager.default.trashItem(at: url, resultingItemURL: nil)
+            RecentProjects.shared.remove(url)
+        }
+        await reload()
+    }
+
     func showInFinder(_ urls: some Collection<URL>) {
         NSWorkspace.shared.activateFileViewerSelecting(Array(urls))
     }

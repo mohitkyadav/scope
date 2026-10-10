@@ -9,6 +9,9 @@ import SwiftUI
 struct RecordingsList: View {
     let library: RecordingLibrary
     @State private var selection = Set<Recording.ID>()
+    /// Projects waiting for the user to confirm moving them to the Trash.
+    @State private var projectsToTrash: Set<URL> = []
+    @State private var trashError: String?
     @Environment(\.openWindow) private var openWindow
 
     var body: some View {
@@ -23,10 +26,48 @@ struct RecordingsList: View {
                 Button("Play Video") { library.playVideo(urls) }
                 Divider()
                 Button("Show in Finder") { library.showInFinder(urls) }
+                Divider()
+                Button("Move to Trash…", role: .destructive) { projectsToTrash = urls }
             }
         } primaryAction: { urls in
             openEditors(urls)
         }
+        .onDeleteCommand {
+            projectsToTrash = selection
+        }
+        .confirmationDialog(
+            trashTitle,
+            isPresented: Binding(get: { !projectsToTrash.isEmpty }, set: { if !$0 { projectsToTrash = [] } })
+        ) {
+            Button("Move to Trash", role: .destructive) {
+                let urls = projectsToTrash
+                projectsToTrash = []
+                selection.subtract(urls)
+                Task {
+                    do {
+                        try await library.moveToTrash(urls)
+                    } catch {
+                        trashError = error.localizedDescription
+                    }
+                }
+            }
+        } message: {
+            Text("You can put it back from the Trash in Finder.")
+        }
+        .alert("Couldn't Move to Trash", isPresented: Binding(get: { trashError != nil }, set: { if !$0 { trashError = nil } })) {
+            Button("OK") {}
+        } message: {
+            Text(trashError ?? "")
+        }
+    }
+
+    private var trashTitle: String {
+        guard projectsToTrash.count == 1, let url = projectsToTrash.first else {
+            return "Move \(projectsToTrash.count) projects to the Trash?"
+        }
+        let recording = library.recordings.first { $0.id == url }
+        let name = recording.map { $0.date.formatted(date: .abbreviated, time: .shortened) } ?? url.deletingPathExtension().lastPathComponent
+        return "Move the recording from \(name) to the Trash?"
     }
 }
 

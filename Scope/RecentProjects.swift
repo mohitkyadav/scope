@@ -33,6 +33,11 @@ final class RecentProjects {
         save()
     }
 
+    func remove(_ url: URL) {
+        urls.removeAll { $0.standardizedFileURL == url.standardizedFileURL }
+        save()
+    }
+
     func clear() {
         urls = []
         save()
