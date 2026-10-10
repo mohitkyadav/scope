@@ -22,6 +22,20 @@ nonisolated enum CaptureArea: Sendable {
             return CGRect(dictionaryRepresentation: bounds as CFDictionary)
         }
     }
+
+    /// The area's current size in pixels: its size on screen times that screen's pixel density,
+    /// rounded to even numbers as video encoders need.
+    @MainActor
+    var pixelSize: CGSize? {
+        guard let bounds, bounds.width > 0, bounds.height > 0 else { return nil }
+        let center = CGPoint(x: bounds.midX, y: bounds.midY)
+        let screen = NSScreen.screens.first { screen in
+            screen.displayID.map { CGDisplayBounds($0).contains(center) } ?? false
+        }
+        let scale = screen?.backingScaleFactor ?? NSScreen.main?.backingScaleFactor ?? 2
+        func even(_ value: CGFloat) -> CGFloat { (value * scale / 2).rounded() * 2 }
+        return CGSize(width: even(bounds.width), height: even(bounds.height))
+    }
 }
 
 /// Samples the cursor position and mouse buttons 120 times a second while recording.

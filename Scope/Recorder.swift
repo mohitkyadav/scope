@@ -85,8 +85,15 @@ final class Recorder: NSObject {
         await webcamPreparation?.value
 
         let configuration = SCStreamConfiguration()
-        configuration.width = Int(filter.contentRect.width * CGFloat(filter.pointPixelScale))
-        configuration.height = Int(filter.contentRect.height * CGFloat(filter.pointPixelScale))
+        // Capture at the area's real pixel size, measured now so a window moved or resized during the
+        // countdown still fills the video. (The filter's own `contentRect` can be far too small for a
+        // single window, which gave blurry, letterboxed window recordings.)
+        let size = area.pixelSize ?? CGSize(
+            width: filter.contentRect.width * CGFloat(filter.pointPixelScale),
+            height: filter.contentRect.height * CGFloat(filter.pointPixelScale)
+        )
+        configuration.width = Int(size.width)
+        configuration.height = Int(size.height)
         configuration.minimumFrameInterval = CMTime(value: 1, timescale: 60)
         configuration.queueDepth = 6
         // Scope draws its own cursor from the recorded cursor data, so leave the real one out.
