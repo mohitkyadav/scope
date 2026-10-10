@@ -22,7 +22,7 @@ nonisolated struct FrameRenderer: @unchecked Sendable {
     let settings: EditorSettings
     let zoomSegments: [ZoomSegment]
     /// The smoothed cursor path the zoomed-in view follows.
-    let cameraPath: CursorPath?
+    let camera: ZoomCamera?
     /// Shown before the recording's first video frame arrives, instead of a black frame.
     let firstFrame: CIImage?
     let notes: [Note]
@@ -145,7 +145,7 @@ nonisolated struct FrameRenderer: @unchecked Sendable {
         guard scale > 1.0001 else { return frame }
 
         let visible = CGSize(width: videoSize.width / scale, height: videoSize.height / scale)
-        let focus = cameraPath?.position(at: time) ?? CGPoint(x: 0.5, y: 0.5)
+        let focus = camera?.focus(at: time) ?? CGPoint(x: 0.5, y: 0.5)
         let center = CGPoint(
             x: min(max(focus.x * videoSize.width, visible.width / 2), videoSize.width - visible.width / 2),
             y: min(max((1 - focus.y) * videoSize.height, visible.height / 2), videoSize.height - visible.height / 2)
@@ -222,7 +222,7 @@ nonisolated struct FrameRenderer: @unchecked Sendable {
         if windowScale > 1.0001 {
             // Grow the window around the point being zoomed in on, then nudge it back so it stays
             // whole inside the frame.
-            let focusFraction = cameraPath?.position(at: time) ?? CGPoint(x: 0.5, y: 0.5)
+            let focusFraction = camera?.focus(at: time) ?? CGPoint(x: 0.5, y: 0.5)
             let focus = CGPoint(
                 x: frame.minX + min(max(focusFraction.x, 0), 1) * frame.width,
                 y: frame.minY + (1 - min(max(focusFraction.y, 0), 1)) * frame.height

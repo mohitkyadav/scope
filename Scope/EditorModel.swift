@@ -76,7 +76,10 @@ final class EditorModel {
     private var videoSize: CGSize = .zero
     private var cursorTrack: CursorTrack?
     private var cursorPath: CursorPath?
-    private var cameraPath: CursorPath?
+    /// A lightly smoothed cursor path for the zoom camera, which follows it only inside zooms.
+    private var cameraCursor: CursorPath?
+    /// The zoom camera, and the zooms and zoom level it was worked out for.
+    private var zoomCamera: (camera: ZoomCamera, zooms: [ZoomSegment], level: Double)?
     /// The smoothing `cursorPath` was built with, so it's only rebuilt when that changes.
     private var cursorPathSmoothing: Double?
     private var pixelsPerPoint: CGFloat = 2
@@ -126,7 +129,7 @@ final class EditorModel {
             if track.areaWidth > 0 {
                 pixelsPerPoint = videoSize.width / track.areaWidth
             }
-            cameraPath = await Task.detached { CursorPath.camera(for: track) }.value
+            cameraCursor = await Task.detached { CursorPath(track: track, smoothing: 0.5) }.value
         }
         sprite = CursorSprite.arrow()
         firstFrame = await Self.firstFrame(of: screen)
@@ -701,13 +704,23 @@ final class EditorModel {
             pixelsPerPoint: pixelsPerPoint,
             settings: settings,
             zoomSegments: edits.zooms,
-            cameraPath: cameraPath,
+            camera: currentZoomCamera(),
             firstFrame: firstFrame,
             notes: edits.notes,
             noteImages: images,
             timeMap: scene.timeMap
         )
         return renderer
+    }
+
+    /// The zoom camera for the current zooms and zoom level, worked out again only when they change.
+    private func currentZoomCamera() -> ZoomCamera {
+        if let zoomCamera, zoomCamera.zooms == edits.zooms, zoomCamera.level == settings.zoomLevel {
+            return zoomCamera.camera
+        }
+        let camera = ZoomCamera(segments: edits.zooms, cursor: cameraCursor, clicks: cursorTrack?.clicks ?? [], zoomLevel: settings.zoomLevel)
+        zoomCamera = (camera, edits.zooms, settings.zoomLevel)
+        return camera
     }
 
     private nonisolated static func firstFrame(of asset: AVAsset) async -> CIImage? {

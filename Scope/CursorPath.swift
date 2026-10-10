@@ -19,12 +19,6 @@ nonisolated struct CursorPath: Sendable {
         self.init(track: track, sigma: smoothing * 0.2, anchoredToClicks: true)
     }
 
-    /// A much smoother path for the zoom camera to follow, so it glides after the cursor
-    /// instead of copying every movement.
-    static func camera(for track: CursorTrack) -> CursorPath {
-        CursorPath(track: track, sigma: 0.5, anchoredToClicks: false)
-    }
-
     /// `sigma` is the blur's width in seconds.
     private init(track: CursorTrack, sigma: Double, anchoredToClicks: Bool) {
         let raw = Self.resample(track)
