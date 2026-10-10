@@ -28,6 +28,8 @@ nonisolated struct FrameRenderer: @unchecked Sendable {
     let notes: [Note]
     /// Each note drawn as a pill, by `Note.id`.
     let noteImages: [UUID: CIImage]
+    /// The image background, already scaled to fill the frame and blurred, if one is chosen.
+    var backgroundImage: CIImage?
     /// Converts the final video's time to the recording's, which the cursor, clicks and zooms use.
     /// `nil` means the two are the same.
     let timeMap: TimeMap?
@@ -56,7 +58,7 @@ nonisolated struct FrameRenderer: @unchecked Sendable {
             frame = cursor.composited(over: frame)
         }
         let video = frame.cropped(to: videoRect)
-        var canvas = settings.background.colors == nil ? zoom(video, by: zoomScale(at: time), at: time) : placeOnBackground(video, at: time)
+        var canvas = settings.background == .none ? zoom(video, by: zoomScale(at: time), at: time) : placeOnBackground(video, at: time)
         if settings.webcamVisible, let webcam, let bubble = bubble(webcam) {
             canvas = bubble.composited(over: canvas)
         }
@@ -207,13 +209,19 @@ nonisolated struct FrameRenderer: @unchecked Sendable {
             window = rounded.composited(over: shadow)
         }
 
-        // The gradient isn't cropped until the end, so it still fills the frame once it's moved.
-        let gradient = CIFilter.linearGradient()
-        gradient.point0 = CGPoint(x: canvas.minX, y: canvas.maxY)
-        gradient.point1 = CGPoint(x: canvas.maxX, y: canvas.minY)
-        gradient.color0 = CIColor(topLeft)
-        gradient.color1 = CIColor(bottomRight)
-        var background = gradient.outputImage ?? CIImage(color: CIColor(topLeft))
+        // The background isn't cropped until the end, so it still fills the frame once it's moved.
+        // An image's edge pixels are stretched outwards for the same reason.
+        var background: CIImage
+        if settings.background == .image, let backgroundImage {
+            background = backgroundImage.clampedToExtent()
+        } else {
+            let gradient = CIFilter.linearGradient()
+            gradient.point0 = CGPoint(x: canvas.minX, y: canvas.maxY)
+            gradient.point1 = CGPoint(x: canvas.maxX, y: canvas.minY)
+            gradient.color0 = CIColor(topLeft)
+            gradient.color1 = CIColor(bottomRight)
+            background = gradient.outputImage ?? CIImage(color: CIColor(topLeft))
+        }
 
         if windowScale > 1.0001 {
             let focusFraction = camera?.focus(at: time) ?? CGPoint(x: 0.5, y: 0.5)

@@ -85,6 +85,10 @@ final class EditorModel {
     private var pixelsPerPoint: CGFloat = 2
     private var sprite: CursorSprite?
     private var firstFrame: CIImage?
+    /// The image background scaled to fill the frame and blurred, and what it was made from.
+    private var backgroundLayer: (image: CIImage, fileName: String, blur: Double)?
+    /// A small copy of the image background for the settings panel.
+    private(set) var backgroundThumbnail: NSImage?
     /// Notes drawn as images, by text, so they're only drawn again when their text changes.
     private(set) var noteImages: [String: CIImage] = [:]
     /// The project's videos and audio lined up as the timeline says; what the player plays.
@@ -139,6 +143,7 @@ final class EditorModel {
         let file = try? ProjectFile.read(from: project.projectFileURL)
         isRestoring = true
         settings = file?.settings ?? EditorSettings()
+        loadBackgroundThumbnail()
         edits = file?.edits ?? .initial(duration: sourceDuration, clicks: cursorTrack?.clicks ?? [])
         isRestoring = false
 
@@ -714,9 +719,80 @@ final class EditorModel {
             firstFrame: firstFrame,
             notes: edits.notes,
             noteImages: images,
+            backgroundImage: await currentBackgroundLayer(),
             timeMap: scene.timeMap
         )
         return renderer
+    }
+
+    // MARK: - Image background
+
+    /// Copies an image into the project and uses it as the background.
+    func chooseBackgroundImage(from url: URL) {
+        let accessing = url.startAccessingSecurityScopedResource()
+        defer {
+            if accessing {
+                url.stopAccessingSecurityScopedResource()
+            }
+        }
+        let fileName = "background-\(UUID().uuidString).\(url.pathExtension.isEmpty ? "png" : url.pathExtension)"
+        do {
+            try FileManager.default.copyItem(at: url, to: project.fileURL(fileName))
+            guard CIImage(contentsOf: project.fileURL(fileName)) != nil else {
+                try? FileManager.default.removeItem(at: project.fileURL(fileName))
+                errorMessage = "“\(url.lastPathComponent)” isn't an image Scope can use."
+                return
+            }
+            settings.backgroundImageFileName = fileName
+            settings.background = .image
+            loadBackgroundThumbnail()
+        } catch {
+            errorMessage = "The image couldn't be added: \(error.localizedDescription)"
+        }
+    }
+
+    func loadBackgroundThumbnail() {
+        guard let fileName = settings.backgroundImageFileName,
+              let image = NSImage(contentsOf: project.fileURL(fileName))
+        else {
+            backgroundThumbnail = nil
+            return
+        }
+        backgroundThumbnail = image
+    }
+
+    /// The image background scaled to fill the frame (cropping the overflow) and blurred, drawn once
+    /// so frames don't have to blur it again. Rebuilt only when the image or blur changes.
+    private func currentBackgroundLayer() async -> CIImage? {
+        guard settings.background == .image, let fileName = settings.backgroundImageFileName else { return nil }
+        let blur = settings.backgroundBlur
+        if let backgroundLayer, backgroundLayer.fileName == fileName, backgroundLayer.blur == blur {
+            return backgroundLayer.image
+        }
+        let url = project.fileURL(fileName)
+        let canvas = canvasSize
+        let image = await Task.detached { Self.makeBackgroundLayer(url: url, canvas: canvas, blur: blur) }.value
+        if let image {
+            backgroundLayer = (image, fileName, blur)
+        }
+        return image
+    }
+
+    private nonisolated static func makeBackgroundLayer(url: URL, canvas: CGSize, blur: Double) -> CIImage? {
+        guard let source = CIImage(contentsOf: url, options: [.applyOrientationProperty: true]),
+              source.extent.width > 0, source.extent.height > 0
+        else { return nil }
+        let frame = CGRect(origin: .zero, size: canvas)
+        let scale = max(canvas.width / source.extent.width, canvas.height / source.extent.height)
+        var image = source.transformed(by: CGAffineTransform(translationX: -source.extent.midX, y: -source.extent.midY)
+            .concatenating(CGAffineTransform(scaleX: scale, y: scale))
+            .concatenating(CGAffineTransform(translationX: frame.midX, y: frame.midY)))
+        if blur > 0 {
+            image = image.clampedToExtent().applyingGaussianBlur(sigma: blur * min(canvas.width, canvas.height) * 0.03)
+        }
+        image = image.cropped(to: frame)
+        guard let rendered = CIContext().createCGImage(image, from: frame) else { return nil }
+        return CIImage(cgImage: rendered)
     }
 
     /// The zoom camera for the current zooms and zoom level, worked out again only when they change.

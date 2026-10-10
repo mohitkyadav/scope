@@ -37,6 +37,10 @@ nonisolated struct EditorSettings: Equatable, Sendable {
 
     /// What the recording sits on. With `.none` the video fills the frame and the settings below do nothing.
     var background = Background.none
+    /// The image in the project used when `background` is `.image`.
+    var backgroundImageFileName: String?
+    /// How much to blur an image background, from 0 (sharp) to 1 (very soft).
+    var backgroundBlur = 0.0
     /// Space around the recording, as a fraction of the frame's shorter side.
     var padding = 0.08
     /// Corner radius of the recording, in screen points.
@@ -68,7 +72,7 @@ extension EditorSettings: Codable {
         case cursorSmoothing, cursorSize, showClicks
         case autoZoom, zoomLevel, zoomTransition
         case webcamVisible, webcamX, webcamY, webcamSize, webcamShape, webcamShadow, webcamMirrored
-        case background, padding, cornerRadius, shadow, parallax
+        case background, backgroundImageFileName, backgroundBlur, padding, cornerRadius, shadow, parallax
     }
 
     /// Any setting missing from the file keeps its default, so projects saved by older versions still open.
@@ -94,6 +98,8 @@ extension EditorSettings: Codable {
         read(.webcamShadow, into: &webcamShadow)
         read(.webcamMirrored, into: &webcamMirrored)
         read(.background, into: &background)
+        read(.backgroundImageFileName, into: &backgroundImageFileName)
+        read(.backgroundBlur, into: &backgroundBlur)
         read(.padding, into: &padding)
         read(.cornerRadius, into: &cornerRadius)
         read(.shadow, into: &shadow)
@@ -108,7 +114,7 @@ nonisolated struct RGB: Equatable, Sendable {
 }
 
 nonisolated enum Background: String, CaseIterable, Identifiable, Codable, Sendable {
-    case none, sunset, ocean, forest, lavender, graphite, white, black
+    case none, sunset, ocean, forest, lavender, graphite, white, black, image
 
     var id: Self { self }
 
@@ -122,13 +128,16 @@ nonisolated enum Background: String, CaseIterable, Identifiable, Codable, Sendab
         case .graphite: "Graphite"
         case .white: "White"
         case .black: "Black"
+        case .image: "Image"
         }
     }
 
     /// Top-left and bottom-right colours of the gradient. Solid colours use the same colour twice.
+    /// An image uses graphite until it has an image.
     var colors: (RGB, RGB)? {
         switch self {
         case .none: nil
+        case .image: Background.graphite.colors
         case .sunset: (RGB(red: 1, green: 0.55, blue: 0.35), RGB(red: 0.93, green: 0.29, blue: 0.55))
         case .ocean: (RGB(red: 0.15, green: 0.55, blue: 0.95), RGB(red: 0.1, green: 0.8, blue: 0.75))
         case .forest: (RGB(red: 0.2, green: 0.65, blue: 0.4), RGB(red: 0.05, green: 0.35, blue: 0.3))

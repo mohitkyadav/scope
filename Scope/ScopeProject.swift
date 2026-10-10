@@ -20,6 +20,8 @@ nonisolated struct ScopeProject: Hashable, Sendable {
     var webcamInfoURL: URL { url.appending(path: "webcam.json") }
     /// Edits made in the editor.
     var projectFileURL: URL { url.appending(path: "project.json") }
+    /// Files copied into the project, like an image background.
+    func fileURL(_ fileName: String) -> URL { url.appending(path: fileName) }
     /// Imported audio files.
     var audioFolderURL: URL { url.appending(path: "audio", directoryHint: .isDirectory) }
 

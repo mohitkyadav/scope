@@ -4,12 +4,14 @@
 //
 
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct EditorView: View {
     static let windowID = "editor"
 
     @State private var model: EditorModel
     @State private var isExporting = false
+    @State private var isChoosingBackground = false
     @Environment(\.undoManager) private var undoManager
 
     init(project: ScopeProject) {
@@ -52,6 +54,8 @@ struct EditorView: View {
                         zoomCount: model.edits.zooms.count,
                         hasWebcam: model.hasWebcam,
                         suggestZooms: { model.suggestZooms(undoManager: undoManager) },
+                        backgroundThumbnail: model.backgroundThumbnail,
+                        chooseBackgroundImage: { isChoosingBackground = true },
                         noteText: model.selectedNote.map { note in
                             Binding(
                                 get: { model.selectedNote?.text ?? note.text },
@@ -85,6 +89,11 @@ struct EditorView: View {
         }
         .sheet(isPresented: $isExporting) {
             ExportSheet(model: model)
+        }
+        .fileImporter(isPresented: $isChoosingBackground, allowedContentTypes: [.image]) { result in
+            if case .success(let url) = result {
+                model.chooseBackgroundImage(from: url)
+            }
         }
         .task {
             RecentProjects.shared.add(model.project.url)
