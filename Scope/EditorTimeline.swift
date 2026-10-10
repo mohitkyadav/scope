@@ -137,11 +137,11 @@ private struct TimelineToolbar: View {
             Menu {
                 ForEach(EditorModel.speeds, id: \.self) { speed in
                     Button {
-                        if let clip = model.selectedClip {
+                        if let clip = model.speedTarget {
                             model.setSpeed(speed, ofClip: clip.id, undoManager: undoManager)
                         }
                     } label: {
-                        if model.selectedClip?.speed == speed {
+                        if model.speedTarget?.speed == speed {
                             Label(String(format: "%g×", speed), systemImage: "checkmark")
                         } else {
                             Text(String(format: "%g×", speed))
@@ -149,12 +149,12 @@ private struct TimelineToolbar: View {
                     }
                 }
             } label: {
-                Label(model.selectedClip.map { String(format: "%g×", $0.speed) } ?? "Speed", systemImage: "gauge.with.dots.needle.67percent")
+                Label(model.speedTarget.map { String(format: "%g×", $0.speed) } ?? "Speed", systemImage: "gauge.with.dots.needle.67percent")
             }
             .labelStyle(.titleAndIcon)
             .fixedSize()
-            .disabled(model.selectedClip == nil)
-            .help("Play the selected clip faster or slower. Split first to change part of a clip.")
+            .disabled(model.speedTarget == nil)
+            .help("Play the selected clip, or the clip at the playhead, faster or slower. Split first to change part of a clip.")
 
             Button {
                 model.addZoom(undoManager: undoManager)
@@ -485,7 +485,9 @@ struct EditableBlock: View {
     }
 
     private func drag(_ edit: BlockEdit) -> some Gesture {
-        DragGesture(minimumDistance: 1)
+        // Measured in window coordinates: the block moves while it's dragged, so distances measured
+        // on the block itself would shrink and it would fall behind the pointer.
+        DragGesture(minimumDistance: 1, coordinateSpace: .global)
             .onChanged { drag in
                 onSelect()
                 onDrag(edit, drag.translation.width)

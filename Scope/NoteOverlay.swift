@@ -28,7 +28,7 @@ struct NoteOverlay: View {
                 .contentShape(Rectangle())
                 .position(x: video.minX + center.x * scale, y: video.minY + center.y * scale)
                 .gesture(
-                    DragGesture()
+                    DragGesture(coordinateSpace: .global)
                         .onChanged { drag in
                             let start = dragStart ?? CGPoint(x: center.x / canvas.width, y: center.y / canvas.height)
                             dragStart = start

@@ -94,7 +94,7 @@ final class EditorModel {
     private var rebuildTask: Task<Void, Never>?
     private var saveTask: Task<Void, Never>?
     private var timeObserver: Any?
-    private var statusTask: Task<Void, Never>?
+    private var statusSubscription: AnyCancellable?
     private var terminationObserver: (any NSObjectProtocol)?
 
     /// The timeline as it was when the current drag began, for undo.
@@ -153,11 +153,13 @@ final class EditorModel {
             }
         }
 
-        statusTask = Task { [weak self, player] in
-            for await status in player.publisher(for: \.timeControlStatus).values {
+        // Subscribed to directly: an async loop over this publisher can miss the change to "playing"
+        // while the window is busy drawing, which left the button stuck on Play.
+        statusSubscription = player.publisher(for: \.timeControlStatus)
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] status in
                 self?.isPlaying = status != .paused
             }
-        }
 
         // Changes are saved half a second after they're made; quitting sooner still keeps them.
         terminationObserver = NotificationCenter.default.addObserver(
@@ -182,8 +184,7 @@ final class EditorModel {
             player.removeTimeObserver(timeObserver)
         }
         timeObserver = nil
-        statusTask?.cancel()
-        statusTask = nil
+        statusSubscription = nil
     }
 
     // MARK: - Playback
@@ -336,6 +337,11 @@ final class EditorModel {
     var selectedClip: Clip? {
         guard case .clip(let id) = selection else { return nil }
         return edits.clips.first { $0.id == id }
+    }
+
+    /// The clip a speed change applies to: the selected one, or else the one under the playhead.
+    var speedTarget: Clip? {
+        selectedClip ?? timeMap.clipIndex(at: currentTime).map { edits.clips[$0] }
     }
 
     func setSpeed(_ speed: Double, ofClip id: UUID, undoManager: UndoManager?) {

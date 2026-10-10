@@ -29,7 +29,7 @@ struct BubbleOverlay: View {
                 .position(x: video.minX + center.x * scale, y: video.minY + center.y * scale)
                 .onHover { isHovering = $0 }
                 .gesture(
-                    DragGesture()
+                    DragGesture(coordinateSpace: .global)
                         .onChanged { drag in
                             let start = dragStart ?? CGPoint(x: center.x / canvasSize.width, y: center.y / canvasSize.height)
                             dragStart = start
