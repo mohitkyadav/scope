@@ -261,7 +261,7 @@ private struct BackgroundPicker: View {
     let chooseImage: () -> Void
 
     var body: some View {
-        LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 10), count: 5), spacing: 10) {
+        LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: Background.allCases.count), spacing: 8) {
             ForEach(Background.allCases) { background in
                 Button {
                     if background == .image, imageThumbnail == nil {

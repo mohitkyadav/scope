@@ -113,39 +113,54 @@ nonisolated struct RGB: Equatable, Sendable {
     var blue: Double
 }
 
-nonisolated enum Background: String, CaseIterable, Identifiable, Codable, Sendable {
-    case none, sunset, ocean, forest, lavender, graphite, white, black, image
+nonisolated enum Background: String, CaseIterable, Identifiable, Sendable {
+    case none, aurora, sunrise, lagoon, orchid, image
 
     var id: Self { self }
 
     var name: String {
         switch self {
         case .none: "None"
-        case .sunset: "Sunset"
-        case .ocean: "Ocean"
-        case .forest: "Forest"
-        case .lavender: "Lavender"
-        case .graphite: "Graphite"
-        case .white: "White"
-        case .black: "Black"
+        case .aurora: "Aurora"
+        case .sunrise: "Sunrise"
+        case .lagoon: "Lagoon"
+        case .orchid: "Orchid"
         case .image: "Image"
         }
     }
 
-    /// Top-left and bottom-right colours of the gradient. Solid colours use the same colour twice.
-    /// An image uses graphite until it has an image.
+    /// Top-left and bottom-right colours of the gradient. An image uses Aurora until it has an image.
     var colors: (RGB, RGB)? {
         switch self {
         case .none: nil
-        case .image: Background.graphite.colors
-        case .sunset: (RGB(red: 1, green: 0.55, blue: 0.35), RGB(red: 0.93, green: 0.29, blue: 0.55))
-        case .ocean: (RGB(red: 0.15, green: 0.55, blue: 0.95), RGB(red: 0.1, green: 0.8, blue: 0.75))
-        case .forest: (RGB(red: 0.2, green: 0.65, blue: 0.4), RGB(red: 0.05, green: 0.35, blue: 0.3))
-        case .lavender: (RGB(red: 0.7, green: 0.6, blue: 1), RGB(red: 0.45, green: 0.35, blue: 0.85))
-        case .graphite: (RGB(red: 0.3, green: 0.32, blue: 0.36), RGB(red: 0.12, green: 0.13, blue: 0.15))
-        case .white: (RGB(red: 0.96, green: 0.96, blue: 0.97), RGB(red: 0.96, green: 0.96, blue: 0.97))
-        case .black: (RGB(red: 0.05, green: 0.05, blue: 0.06), RGB(red: 0.05, green: 0.05, blue: 0.06))
+        case .aurora, .image: (RGB(red: 0.29, green: 0.22, blue: 0.78), RGB(red: 0.08, green: 0.71, blue: 0.74))
+        case .sunrise: (RGB(red: 0.98, green: 0.42, blue: 0.42), RGB(red: 0.99, green: 0.75, blue: 0.36))
+        case .lagoon: (RGB(red: 0.27, green: 0.58, blue: 0.98), RGB(red: 0.38, green: 0.89, blue: 0.74))
+        case .orchid: (RGB(red: 0.87, green: 0.31, blue: 0.72), RGB(red: 0.44, green: 0.31, blue: 0.95))
         }
+    }
+}
+
+extension Background: Codable {
+    /// Backgrounds from earlier versions that no longer exist become the closest one that does,
+    /// so older projects keep a background.
+    nonisolated init(from decoder: Decoder) throws {
+        let raw = try decoder.singleValueContainer().decode(String.self)
+        if let background = Background(rawValue: raw) {
+            self = background
+            return
+        }
+        switch raw {
+        case "sunset": self = .sunrise
+        case "ocean": self = .lagoon
+        case "lavender": self = .orchid
+        default: self = .aurora
+        }
+    }
+
+    nonisolated func encode(to encoder: Encoder) throws {
+        var container = encoder.singleValueContainer()
+        try container.encode(rawValue)
     }
 }
 
