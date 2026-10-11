@@ -6,6 +6,13 @@
 
 <p align="center">A native macOS screen recorder for polished demos and tutorials.</p>
 
+<p align="center">
+  <a href="https://github.com/mohitkyadav/scope/releases/latest"><img src="https://img.shields.io/github/v/release/mohitkyadav/scope?label=version&color=e8473e" alt="Latest version"></a>
+  <a href="https://github.com/mohitkyadav/scope/releases"><img src="https://img.shields.io/github/downloads/mohitkyadav/scope/total?color=e8473e" alt="Downloads"></a>
+  <img src="https://img.shields.io/badge/macOS-15%2B-e8473e" alt="macOS 15 or later">
+  <a href="LICENSE"><img src="https://img.shields.io/github/license/mohitkyadav/scope?color=e8473e" alt="MIT license"></a>
+</p>
+
 ---
 
 ## Features
