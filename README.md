@@ -6,6 +6,13 @@
 
 <p align="center">A native macOS screen recorder for polished demos and tutorials.</p>
 
+<p align="center">
+  <a href="https://github.com/mohitkyadav/scope/releases/latest"><img src="https://img.shields.io/github/v/release/mohitkyadav/scope?label=version&color=e8473e" alt="Latest version"></a>
+  <a href="https://github.com/mohitkyadav/scope/releases"><img src="https://img.shields.io/github/downloads/mohitkyadav/scope/total?color=e8473e" alt="Downloads"></a>
+  <img src="https://img.shields.io/badge/macOS-15%2B-e8473e" alt="macOS 15 or later">
+  <a href="LICENSE"><img src="https://img.shields.io/github/license/mohitkyadav/scope?color=e8473e" alt="MIT license"></a>
+</p>
+
 ---
 
 ## Features
@@ -40,9 +47,25 @@
 - MP4 at the original size or smaller, 30 or 60 fps, with a choice of quality
 - Looping GIFs, with the cursor eased back to the start so the loop is seamless
 
-## Requirements
+## Install
 
-macOS 15 or later.
+```sh
+brew install mohitkyadav/tap/scope
+```
+
+Scope needs macOS 15 or later. Update with `brew upgrade scope`, and remove it with `brew uninstall scope` (add `--zap` to also remove its settings and saved background images). Your recordings in Downloads are never touched.
+
+Scope isn't notarized by Apple, so the Homebrew install clears the quarantine flag for you. If you download the zip from [Releases](https://github.com/mohitkyadav/scope/releases) instead, macOS will block the first launch: open System Settings → Privacy & Security and click **Open Anyway**.
+
+## Permissions
+
+| Permission | Asked when | Needed for |
+|---|---|---|
+| Screen & System Audio Recording | You first record | Recording the screen and your Mac's sound (required) |
+| Microphone | You turn on the microphone | Voice-over |
+| Camera | You turn on the camera | The webcam bubble |
+
+After allowing screen recording, quit and reopen Scope. Permissions carry over when you update.
 
 ## Build
 
