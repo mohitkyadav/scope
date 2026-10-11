@@ -82,7 +82,7 @@ struct EditorView: View {
         }
         .fileImporter(isPresented: $isChoosingBackground, allowedContentTypes: [.image]) { result in
             if case .success(let url) = result {
-                model.chooseBackgroundImage(from: url)
+                Task { await model.chooseBackgroundImage(from: url) }
             }
         }
         .task {
@@ -140,8 +140,9 @@ struct EditorView: View {
             onZoomSliderReleased: { actionName in
                 model.endGesture(actionName, undoManager: undoManager)
             },
-            backgroundThumbnail: model.backgroundThumbnail,
+            backgroundImageID: model.backgroundImageID,
             chooseBackgroundImage: { isChoosingBackground = true },
+            useBackgroundImage: { model.useBackgroundImage($0) },
             noteText: model.selectedNote.map { note in
                 Binding(
                     get: { model.selectedNote?.text ?? note.text },

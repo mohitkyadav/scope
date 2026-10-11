@@ -117,6 +117,8 @@ nonisolated enum Background: String, CaseIterable, Identifiable, Sendable {
     case none, aurora, sunrise, lagoon, orchid, image
 
     var id: Self { self }
+    /// Every background but an image, in the order they're offered.
+    static let gradients = allCases.filter { $0 != .image }
 
     var name: String {
         switch self {

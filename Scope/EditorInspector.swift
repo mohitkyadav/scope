@@ -28,9 +28,10 @@ struct EditorInspector: View {
     var selectedZoom: ZoomSegment?
     var onZoomChange: (ZoomSegment, Bool, String) -> Void = { _, _, _ in }
     var onZoomSliderReleased: (String) -> Void = { _ in }
-    /// A small copy of the image background, if one has been chosen.
-    var backgroundThumbnail: NSImage?
+    /// Which background library image the project uses, if it uses one.
+    var backgroundImageID: String?
     var chooseBackgroundImage: () -> Void = {}
+    var useBackgroundImage: (BackgroundLibrary.Item) -> Void = { _ in }
     /// The selected note's text, if a note is selected.
     var noteText: Binding<String>?
     var onNoteEditingChanged: (Bool) -> Void = { _ in }
@@ -74,12 +75,43 @@ struct EditorInspector: View {
 
     private var backgroundSection: some View {
         Section("Background") {
-            BackgroundPicker(selection: $settings.background, imageThumbnail: backgroundThumbnail, chooseImage: chooseBackgroundImage)
+            SwatchGroup("Gradients") {
+                ForEach(Background.gradients) { background in
+                    Swatch(name: background.name, isSelected: settings.background == background) {
+                        settings.background = background
+                    } content: {
+                        if let (topLeft, bottomRight) = background.colors {
+                            LinearGradient(colors: [Color(topLeft), Color(bottomRight)], startPoint: .topLeading, endPoint: .bottomTrailing)
+                        } else {
+                            Color.scopePill
+                                .overlay(Image(systemName: "nosign").font(.title3).foregroundStyle(.secondary))
+                        }
+                    }
+                }
+            }
+
+            SwatchGroup("Images") {
+                Swatch(name: "Add Image…", isSelected: false, action: chooseBackgroundImage) {
+                    Color.scopePill
+                        .overlay(Image(systemName: "plus").font(.title3).foregroundStyle(.secondary))
+                }
+                ForEach(BackgroundLibrary.shared.items) { item in
+                    Swatch(name: "Image", isSelected: settings.background == .image && item.id == backgroundImageID) {
+                        useBackgroundImage(item)
+                    } content: {
+                        Image(nsImage: item.thumbnail)
+                            .resizable()
+                            .aspectRatio(contentMode: .fill)
+                    }
+                    .contextMenu {
+                        Button("Remove from Library") {
+                            BackgroundLibrary.shared.remove(item)
+                        }
+                    }
+                }
+            }
 
             if settings.background == .image {
-                LabeledContent("Image") {
-                    Button(backgroundThumbnail == nil ? "Choose…" : "Change…", action: chooseBackgroundImage)
-                }
                 LabeledSlider("Blur", value: $settings.backgroundBlur, in: 0...1) {
                     $0 == 0 ? "Off" : "\(Int(($0 * 100).rounded()))%"
                 }
@@ -254,63 +286,59 @@ private struct LevelPresets: View {
     }
 }
 
-/// A grid of rounded swatches, one per background. The image swatch shows the chosen image, or asks for one.
-private struct BackgroundPicker: View {
-    @Binding var selection: Background
-    let imageThumbnail: NSImage?
-    let chooseImage: () -> Void
+/// A titled grid of background swatches.
+private struct SwatchGroup<Content: View>: View {
+    let title: String
+    @ViewBuilder let content: Content
+
+    init(_ title: String, @ViewBuilder content: () -> Content) {
+        self.title = title
+        self.content = content()
+    }
 
     var body: some View {
-        LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: Background.allCases.count), spacing: 8) {
-            ForEach(Background.allCases) { background in
-                Button {
-                    if background == .image, imageThumbnail == nil {
-                        chooseImage()
-                    } else {
-                        selection = background
-                    }
-                } label: {
-                    swatch(for: background)
-                        .aspectRatio(1, contentMode: .fit)
-                        .clipShape(.rect(cornerRadius: 10, style: .continuous))
-                        .overlay {
-                            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                                .strokeBorder(Color.scopeStroke)
-                        }
-                        .padding(3)
-                        .overlay {
-                            if background == selection {
-                                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                    .strokeBorder(Color.accentColor, lineWidth: 2.5)
-                            }
-                        }
-                }
-                .buttonStyle(.plain)
-                .help(background.name)
-                .accessibilityLabel(background.name)
-                .accessibilityAddTraits(background == selection ? .isSelected : [])
+        VStack(alignment: .leading, spacing: 8) {
+            Text(title)
+                .font(.subheadline.weight(.medium))
+                .foregroundStyle(.secondary)
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: Background.gradients.count), spacing: 8) {
+                content
             }
         }
         .padding(.vertical, 4)
     }
+}
 
-    @ViewBuilder
-    private func swatch(for background: Background) -> some View {
-        if background == .image {
-            if let imageThumbnail {
-                Image(nsImage: imageThumbnail)
-                    .resizable()
-                    .aspectRatio(contentMode: .fill)
-            } else {
-                Color.scopePill
-                    .overlay(Image(systemName: "photo").font(.title3).foregroundStyle(.secondary))
-            }
-        } else if let (topLeft, bottomRight) = background.colors {
-            LinearGradient(colors: [Color(topLeft), Color(bottomRight)], startPoint: .topLeading, endPoint: .bottomTrailing)
-        } else {
-            Color.scopePill
-                .overlay(Image(systemName: "nosign").font(.title3).foregroundStyle(.secondary))
+/// A rounded square showing a background, outlined in the accent colour when it's in use.
+private struct Swatch<Content: View>: View {
+    let name: String
+    let isSelected: Bool
+    let action: () -> Void
+    @ViewBuilder let content: Content
+
+    var body: some View {
+        Button(action: action) {
+            Color.clear
+                .aspectRatio(1, contentMode: .fit)
+                .overlay { content }
+                .clipShape(.rect(cornerRadius: 10, style: .continuous))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .strokeBorder(Color.scopeStroke)
+                }
+                .padding(3)
+                .overlay {
+                    if isSelected {
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .strokeBorder(Color.accentColor, lineWidth: 2.5)
+                    }
+                }
+                .contentShape(Rectangle())
         }
+        .buttonStyle(.plain)
+        .help(name)
+        .accessibilityLabel(name)
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 }
 
