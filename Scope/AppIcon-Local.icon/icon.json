@@ -1,0 +1,101 @@
+{
+  "groups": [
+    {
+      "layers": [
+        {
+          "image-name": "record-dot.svg",
+          "name": "record-dot",
+          "glass": true
+        },
+        {
+          "image-name": "record-ring.svg",
+          "name": "record-ring",
+          "glass": true,
+          "opacity": 0.75
+        }
+      ],
+      "name": "Record",
+      "shadow": {
+        "kind": "layer-color",
+        "opacity": 0.5
+      },
+      "specular": true
+    },
+    {
+      "layers": [
+        {
+          "image-name": "ribbon-text.svg",
+          "name": "ribbon-text",
+          "glass": false
+        },
+        {
+          "image-name": "ribbon.svg",
+          "name": "ribbon",
+          "glass": false
+        },
+        {
+          "image-name": "brackets.svg",
+          "name": "brackets",
+          "glass": false
+        }
+      ],
+      "name": "Brackets",
+      "shadow": {
+        "kind": "layer-color",
+        "opacity": 0.25
+      },
+      "specular": false
+    },
+    {
+      "layers": [
+        {
+          "image-name": "window-controls.svg",
+          "name": "window-controls",
+          "glass": true
+        },
+        {
+          "image-name": "window.svg",
+          "name": "window",
+          "glass": true
+        }
+      ],
+      "name": "Window",
+      "shadow": {
+        "kind": "neutral",
+        "opacity": 0.35
+      },
+      "specular": true,
+      "translucency": {
+        "enabled": true,
+        "value": 0.6
+      },
+      "blur-material": 0.3
+    },
+    {
+      "layers": [
+        {
+          "image-name": "blobs.svg",
+          "name": "blobs",
+          "glass": false
+        }
+      ],
+      "name": "Blobs",
+      "shadow": {
+        "kind": "neutral",
+        "opacity": 0
+      },
+      "specular": false
+    }
+  ],
+  "fill": {
+    "linear-gradient": [
+      "srgb:1.00000,0.97255,0.93333,1.00000",
+      "srgb:1.00000,0.85098,0.74118,1.00000"
+    ]
+  },
+  "supported-platforms": {
+    "squares": [
+      "macOS"
+    ]
+  }
+}
