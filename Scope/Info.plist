@@ -13,7 +13,7 @@
 			<string>Owner</string>
 			<key>LSItemContentTypes</key>
 			<array>
-				<string>$(PRODUCT_BUNDLE_IDENTIFIER).project</string>
+				<string>com.only4.Scope.project</string>
 			</array>
 			<key>LSTypeIsPackage</key>
 			<true/>
@@ -25,7 +25,7 @@
 	<array>
 		<dict>
 			<key>UTTypeIdentifier</key>
-			<string>$(PRODUCT_BUNDLE_IDENTIFIER).project</string>
+			<string>com.only4.Scope.project</string>
 			<key>UTTypeDescription</key>
 			<string>Scope Project</string>
 			<key>UTTypeConformsTo</key>

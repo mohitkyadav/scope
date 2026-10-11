@@ -29,6 +29,8 @@ Native macOS screen recorder for making polished product demos and tutorials.
 xcodebuild -project Scope.xcodeproj -scheme Scope -configuration Debug build
 ```
 
+Debug builds are a separate app, "[local] Scope" (`com.only4.Scope.dev`, set by the `APP_NAME` build setting), so they get their own permissions, settings and sandbox container and can run next to the released Scope. Both builds declare the same `com.only4.Scope.project` type for `.scope` files.
+
 ## Release
 
 - Pushing a `v*` tag runs `.github/workflows/release.yml`: it signs with the self-signed "Scope Release" certificate (from repository secrets), publishes a GitHub release with `Scope-<version>.zip`, and updates `Casks/scope.rb` in `mohitkyadav/homebrew-tap`.
