@@ -52,6 +52,16 @@ jobs:
           security import "$RUNNER_TEMP/certificate.p12" -k "$SIGNING_KEYCHAIN" -P "$CERTIFICATE_PASSWORD" -T /usr/bin/codesign
           security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$password" "$SIGNING_KEYCHAIN" > /dev/null
           rm "$RUNNER_TEMP/certificate.p12"
+          # codesign looks in the keychain search list, so put the new keychain first.
+          security list-keychains -d user -s "$SIGNING_KEYCHAIN" $(security list-keychains -d user | tr -d '"')
+          security find-identity "$SIGNING_KEYCHAIN"
+          # Sign by the certificate's fingerprint, which can't match anything else.
+          identity=$(security find-identity "$SIGNING_KEYCHAIN" | awk '/"Scope Release"/ { print $2; exit }')
+          if [[ -z "$identity" ]]; then
+            echo "::error::The certificate in SIGNING_CERTIFICATE_P12 isn't named \"Scope Release\" or has no private key"
+            exit 1
+          fi
+          echo "SIGNING_IDENTITY=$identity" >> "$GITHUB_ENV"
 
       - name: Build and sign
         id: build
