@@ -40,9 +40,25 @@
 - MP4 at the original size or smaller, 30 or 60 fps, with a choice of quality
 - Looping GIFs, with the cursor eased back to the start so the loop is seamless
 
-## Requirements
+## Install
 
-macOS 15 or later.
+```sh
+brew install mohitkyadav/tap/scope
+```
+
+Scope needs macOS 15 or later. Update with `brew upgrade scope`, and remove it with `brew uninstall scope` (add `--zap` to also remove its settings and saved background images). Your recordings in Downloads are never touched.
+
+Scope isn't notarized by Apple, so the Homebrew install clears the quarantine flag for you. If you download the zip from [Releases](https://github.com/mohitkyadav/scope/releases) instead, macOS will block the first launch: open System Settings → Privacy & Security and click **Open Anyway**.
+
+## Permissions
+
+| Permission | Asked when | Needed for |
+|---|---|---|
+| Screen & System Audio Recording | You first record | Recording the screen and your Mac's sound (required) |
+| Microphone | You turn on the microphone | Voice-over |
+| Camera | You turn on the camera | The webcam bubble |
+
+After allowing screen recording, quit and reopen Scope. Permissions carry over when you update.
 
 ## Build
 
