@@ -82,6 +82,32 @@ private struct TimelineToolbar: View {
     @State private var isImportingWebcam = false
 
     var body: some View {
+        // On narrower windows, drop the Zoom and Note labels first, then the timeline zoom slider,
+        // rather than squashing anything.
+        ViewThatFits(in: .horizontal) {
+            row(labelled: true, showsZoomSlider: true)
+            row(labelled: false, showsZoomSlider: true)
+            row(labelled: false, showsZoomSlider: false)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
+        .background {
+            Color.clear.fileImporter(isPresented: $isImportingAudio, allowedContentTypes: [.audio]) { result in
+                if case .success(let url) = result {
+                    Task { await model.importAudio(from: url, undoManager: undoManager) }
+                }
+            }
+        }
+        .background {
+            Color.clear.fileImporter(isPresented: $isImportingWebcam, allowedContentTypes: [.movie]) { result in
+                if case .success(let url) = result {
+                    Task { await model.importWebcam(from: url, undoManager: undoManager) }
+                }
+            }
+        }
+    }
+
+    private func row(labelled: Bool, showsZoomSlider: Bool) -> some View {
         HStack(spacing: 14) {
             Button(action: model.togglePlayback) {
                 Image(systemName: model.isPlaying ? "pause.fill" : "play.fill")
@@ -103,6 +129,8 @@ private struct TimelineToolbar: View {
                     .foregroundStyle(.secondary)
             }
             .monospacedDigit()
+            .lineLimit(1)
+            .fixedSize()
 
             Spacer(minLength: 8)
 
@@ -117,30 +145,33 @@ private struct TimelineToolbar: View {
             }
 
             PillGroup {
-                addZoomButton
-                    .labelStyle(.titleAndIcon)
-                addNoteButton
-                    .labelStyle(.titleAndIcon)
+                Group {
+                    addZoomButton
+                    addNoteButton
+                }
+                .labelStyle(labelled ? AnyLabelStyle(.titleAndIcon) : AnyLabelStyle(.iconOnly))
                 addAudioButton
                     .labelStyle(.iconOnly)
                 webcamButton
                     .labelStyle(.iconOnly)
             }
 
-            Spacer(minLength: 12)
+            if showsZoomSlider {
+                Spacer(minLength: 8)
 
-            HStack(spacing: 6) {
-                Image(systemName: "minus.magnifyingglass")
-                    .foregroundStyle(.secondary)
-                Slider(value: $magnification, in: 1...20)
-                    .frame(minWidth: 50, maxWidth: 110)
-                    .help("Zoom the timeline")
-                Image(systemName: "plus.magnifyingglass")
-                    .foregroundStyle(.secondary)
+                HStack(spacing: 6) {
+                    Image(systemName: "minus.magnifyingglass")
+                        .foregroundStyle(.secondary)
+                    Slider(value: $magnification, in: 1...20)
+                        .frame(width: 90)
+                        .help("Zoom the timeline")
+                    Image(systemName: "plus.magnifyingglass")
+                        .foregroundStyle(.secondary)
+                }
+            } else {
+                Spacer(minLength: 0)
             }
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 10)
     }
 
     private var splitButton: some View {
@@ -222,11 +253,6 @@ private struct TimelineToolbar: View {
             Label("Add Audio", systemImage: "music.note")
         }
         .help("Add music or a voice-over at the playhead")
-        .fileImporter(isPresented: $isImportingAudio, allowedContentTypes: [.audio]) { result in
-            if case .success(let url) = result {
-                Task { await model.importAudio(from: url, undoManager: undoManager) }
-            }
-        }
     }
 
     private var webcamButton: some View {
@@ -236,11 +262,6 @@ private struct TimelineToolbar: View {
             Label("Webcam Video", systemImage: "video.badge.plus")
         }
         .help("Use another video for the webcam bubble, starting at the playhead")
-        .fileImporter(isPresented: $isImportingWebcam, allowedContentTypes: [.movie]) { result in
-            if case .success(let url) = result {
-                Task { await model.importWebcam(from: url, undoManager: undoManager) }
-            }
-        }
     }
 }
 

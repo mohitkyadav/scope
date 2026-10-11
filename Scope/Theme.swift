@@ -101,3 +101,16 @@ struct TrailingSpace: ToolbarContent {
         }
     }
 }
+
+/// Lets a view switch between label styles, e.g. icons only when space is tight.
+struct AnyLabelStyle: LabelStyle {
+    private let make: (Configuration) -> AnyView
+
+    init<Style: LabelStyle>(_ style: Style) {
+        make = { AnyView(Label($0).labelStyle(style)) }
+    }
+
+    func makeBody(configuration: Configuration) -> some View {
+        make(configuration)
+    }
+}
