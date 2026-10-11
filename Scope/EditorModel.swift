@@ -91,8 +91,8 @@ final class EditorModel {
     private var firstFrame: CIImage?
     /// The image background scaled to fill the frame and blurred, and what it was made from.
     private var backgroundLayer: (image: CIImage, fileName: String, blur: Double)?
-    /// A small copy of the image background for the settings panel.
-    private(set) var backgroundThumbnail: NSImage?
+    /// The background library image each of the project's background files is, by file name.
+    private var backgroundImageIDs: [String: String] = [:]
     /// Notes drawn as images, by text, so they're only drawn again when their text changes.
     private(set) var noteImages: [String: CIImage] = [:]
     /// The project's videos and audio lined up as the timeline says; what the player plays.
@@ -149,11 +149,11 @@ final class EditorModel {
         recordingDate = (try? project.url.resourceValues(forKeys: [.creationDateKey]))?.creationDate
         isRestoring = true
         settings = file?.settings ?? EditorSettings()
-        loadBackgroundThumbnail()
         edits = file?.edits ?? .initial(duration: sourceDuration, clicks: cursorTrack?.clicks ?? [])
         isRestoring = false
 
         await rebuild()
+        await loadBackgroundImageID()
 
         timeObserver = player.addPeriodicTimeObserver(
             forInterval: CMTime(value: 1, timescale: 30),
@@ -753,38 +753,48 @@ final class EditorModel {
 
     // MARK: - Image background
 
-    /// Copies an image into the project and uses it as the background.
-    func chooseBackgroundImage(from url: URL) {
+    /// Adds an image to the background library and uses it as the background.
+    func chooseBackgroundImage(from url: URL) async {
         let accessing = url.startAccessingSecurityScopedResource()
         defer {
             if accessing {
                 url.stopAccessingSecurityScopedResource()
             }
         }
-        let fileName = "background-\(UUID().uuidString).\(url.pathExtension.isEmpty ? "png" : url.pathExtension)"
+        guard let item = await BackgroundLibrary.shared.add(from: url) else {
+            errorMessage = "“\(url.lastPathComponent)” isn't an image Scope can use."
+            return
+        }
+        useBackgroundImage(item)
+    }
+
+    /// Uses an image from the background library, copying it into the project so the project
+    /// doesn't depend on the library.
+    func useBackgroundImage(_ item: BackgroundLibrary.Item) {
+        let fileName = "background-\(item.url.lastPathComponent)"
+        let destination = project.fileURL(fileName)
         do {
-            try FileManager.default.copyItem(at: url, to: project.fileURL(fileName))
-            guard CIImage(contentsOf: project.fileURL(fileName)) != nil else {
-                try? FileManager.default.removeItem(at: project.fileURL(fileName))
-                errorMessage = "“\(url.lastPathComponent)” isn't an image Scope can use."
-                return
+            if !FileManager.default.fileExists(atPath: destination.path) {
+                try FileManager.default.copyItem(at: item.url, to: destination)
             }
             settings.backgroundImageFileName = fileName
             settings.background = .image
-            loadBackgroundThumbnail()
+            backgroundImageIDs[fileName] = item.id
         } catch {
             errorMessage = "The image couldn't be added: \(error.localizedDescription)"
         }
     }
 
-    func loadBackgroundThumbnail() {
-        guard let fileName = settings.backgroundImageFileName,
-              let image = NSImage(contentsOf: project.fileURL(fileName))
-        else {
-            backgroundThumbnail = nil
-            return
-        }
-        backgroundThumbnail = image
+    /// Finds the project's image in the background library, adding it if it's from before the library.
+    private func loadBackgroundImageID() async {
+        await BackgroundLibrary.shared.load()
+        guard let fileName = settings.backgroundImageFileName else { return }
+        backgroundImageIDs[fileName] = await BackgroundLibrary.shared.add(from: project.fileURL(fileName))?.id
+    }
+
+    /// Which background library image the project's image background is.
+    var backgroundImageID: String? {
+        settings.backgroundImageFileName.flatMap { backgroundImageIDs[$0] }
     }
 
     /// The image background scaled to fill the frame (cropping the overflow) and blurred, drawn once
