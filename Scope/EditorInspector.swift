@@ -62,6 +62,7 @@ struct EditorInspector: View {
                     selectedZoomSection(zoom)
                 }
                 zoomDefaultsSection
+                motionSection
             case .cursor:
                 cursorSection
             }
@@ -187,6 +188,17 @@ struct EditorInspector: View {
             Text(selectedZoom == nil ? "Zoom" : "Defaults")
         } footer: {
             Text("Defaults for \(zoomCount == 1 ? "the 1 zoom" : "the \(zoomCount) zooms") on the timeline. Select a zoom to give it its own settings.")
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private var motionSection: some View {
+        Section {
+            Toggle("Motion blur", isOn: $settings.motionBlur)
+        } header: {
+            Text("Motion")
+        } footer: {
+            Text("Blurs zooms, pans and the cursor while they move, like a real camera.")
                 .foregroundStyle(.secondary)
         }
     }
