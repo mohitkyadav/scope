@@ -29,6 +29,12 @@ Native macOS screen recorder for making polished product demos and tutorials.
 xcodebuild -project Scope.xcodeproj -scheme Scope -configuration Debug build
 ```
 
+## Release
+
+- Pushing a `v*` tag runs `.github/workflows/release.yml`: it signs with the self-signed "Scope Release" certificate (from repository secrets), publishes a GitHub release with `Scope-<version>.zip`, and updates `Casks/scope.rb` in `mohitkyadav/homebrew-tap`.
+- `scripts/build-release.sh <version>` builds and signs locally (`SIGNING_IDENTITY`, `SIGNING_KEYCHAIN` override the defaults). It signs ad hoc first so Xcode adds the entitlements, then re-signs with the certificate and strips `get-task-allow`.
+- `scripts/cask.sh <version> <sha256>` prints the cask. Releases aren't notarized, so the cask clears the quarantine flag after install.
+
 ## Local overrides
 
 Personal, machine-specific notes live in CLAUDE.local.md (gitignored):
