@@ -44,21 +44,10 @@ nonisolated struct FrameRenderer: @unchecked Sendable {
     /// `source` is the screen frame and `webcam` the camera frame at `time` in the final video, if there are any.
     func render(source: CIImage?, webcam: CIImage? = nil, time outputTime: Double) -> CIImage {
         let time = timeMap?.sourceTime(at: outputTime) ?? outputTime
-        let videoRect = CGRect(origin: .zero, size: videoSize)
         // Before the first video frame there's no source image, or only an infinite empty one.
         let source = source.flatMap { $0.extent.isInfinite ? nil : $0 } ?? firstFrame ?? CIImage(color: .black)
-        var frame = source.cropped(to: videoRect)
 
-        if settings.showClicks {
-            for ripple in rippleLayers(at: time) {
-                frame = ripple.composited(over: frame)
-            }
-        }
-        if let cursor = cursorLayer(at: time, outputTime: outputTime) {
-            frame = cursor.composited(over: frame)
-        }
-        let video = frame.cropped(to: videoRect)
-        var canvas = settings.background == .none ? zoom(video, at: time) : placeOnBackground(video, at: time)
+        var canvas = blurredScene(source, at: outputTime)
         if settings.webcamVisible, let webcam, let bubble = bubble(webcam) {
             canvas = bubble.composited(over: canvas)
         }
@@ -68,6 +57,99 @@ nonisolated struct FrameRenderer: @unchecked Sendable {
             }
         }
         return canvas.cropped(to: CGRect(origin: .zero, size: canvasSize))
+    }
+
+    /// The recording with its cursor, zoomed and placed on the background: everything that moves.
+    /// `cursorTimes` are when to draw the cursor, averaged if there's more than one.
+    private func scene(_ source: CIImage, at outputTime: Double, cursorTimes: [Double]? = nil) -> CIImage {
+        let time = timeMap?.sourceTime(at: outputTime) ?? outputTime
+        let videoRect = CGRect(origin: .zero, size: videoSize)
+        var frame = source.cropped(to: videoRect)
+
+        if settings.showClicks {
+            for ripple in rippleLayers(at: time) {
+                frame = ripple.composited(over: frame)
+            }
+        }
+        let cursors = (cursorTimes ?? [outputTime]).compactMap { outputTime in
+            cursorLayer(at: timeMap?.sourceTime(at: outputTime) ?? outputTime, outputTime: outputTime)
+        }
+        if !cursors.isEmpty {
+            frame = Self.average(cursors).composited(over: frame)
+        }
+        let video = frame.cropped(to: videoRect)
+        return settings.background == .none ? zoom(video, at: time) : placeOnBackground(video, at: time)
+    }
+
+    // MARK: - Motion blur
+
+    /// How long the virtual shutter is open for each frame: half a frame at 60 fps, like a film camera.
+    private static let shutter = 1.0 / 120
+    /// The most moments averaged into one frame.
+    private static let maxBlurSamples = 16
+
+    /// The scene, blurred along the way things move while the shutter is open. When the camera moves,
+    /// the whole scene is drawn at several moments and averaged; when only the cursor moves, just the
+    /// cursor is. Still frames are drawn once.
+    private func blurredScene(_ source: CIImage, at outputTime: Double) -> CIImage {
+        guard settings.motionBlur else { return scene(source, at: outputTime) }
+        let open = max(0, outputTime - Self.shutter / 2)
+        let close = outputTime + Self.shutter / 2
+        let (from, to) = (timeMap?.sourceTime(at: open) ?? open, timeMap?.sourceTime(at: close) ?? close)
+
+        let cameraSamples = Self.sampleCount(forMotion: cameraMotion(from: from, to: to))
+        let cursorSamples = Self.sampleCount(forMotion: cursorMotion(from: from, to: to))
+        if cameraSamples > 1 {
+            let times = Self.moments(max(cameraSamples, cursorSamples), from: open, to: close)
+            return Self.average(times.map { scene(source, at: $0) })
+        }
+        return scene(source, at: outputTime, cursorTimes: Self.moments(cursorSamples, from: open, to: close))
+    }
+
+    /// Enough moments that each is at most a couple of pixels from the next.
+    private static func sampleCount(forMotion pixels: CGFloat) -> Int {
+        pixels < 2 ? 1 : min(Int((pixels / 2).rounded(.up)) + 1, maxBlurSamples)
+    }
+
+    /// `count` evenly spaced times from `start` to `end`, or just the middle for one.
+    private static func moments(_ count: Int, from start: Double, to end: Double) -> [Double] {
+        guard count > 1 else { return [(start + end) / 2] }
+        return (0..<count).map { start + (end - start) * Double($0) / Double(count - 1) }
+    }
+
+    /// How far, in canvas pixels, the recording's corners move between two times.
+    private func cameraMotion(from a: Double, to b: Double) -> CGFloat {
+        let (start, end) = (videoToCanvas(at: a), videoToCanvas(at: b))
+        let rect = CGRect(origin: .zero, size: videoSize)
+        return [CGPoint(x: rect.minX, y: rect.minY), CGPoint(x: rect.maxX, y: rect.minY),
+                CGPoint(x: rect.minX, y: rect.maxY), CGPoint(x: rect.maxX, y: rect.maxY)]
+            .map { Self.distance($0.applying(start), $0.applying(end)) }
+            .max() ?? 0
+    }
+
+    /// How far, in canvas pixels, the cursor moves between two times.
+    private func cursorMotion(from a: Double, to b: Double) -> CGFloat {
+        guard let cursorPath, let start = cursorPath.position(at: a), let end = cursorPath.position(at: b) else { return 0 }
+        let transform = videoToCanvas(at: b)
+        let point = { (position: CGPoint) in
+            CGPoint(x: position.x * self.videoSize.width, y: (1 - position.y) * self.videoSize.height).applying(transform)
+        }
+        return Self.distance(point(start), point(end))
+    }
+
+    private static func distance(_ a: CGPoint, _ b: CGPoint) -> CGFloat {
+        hypot(a.x - b.x, a.y - b.y)
+    }
+
+    /// Images mixed equally, each at `1 / count` opacity and added up.
+    private static func average(_ images: [CIImage]) -> CIImage {
+        guard images.count > 1 else { return images.first ?? .empty() }
+        let weight = 1 / CGFloat(images.count)
+        return images
+            .map { $0.applyingFilter("CIColorMatrix", parameters: ["inputAVector": CIVector(x: 0, y: 0, z: 0, w: weight)]) }
+            .reduce(CIImage.empty()) { sum, image in
+                image.applyingFilter("CIAdditionCompositing", parameters: [kCIInputBackgroundImageKey: sum])
+            }
     }
 
     /// How long notes take to fade in and out.
@@ -139,12 +221,40 @@ nonisolated struct FrameRenderer: @unchecked Sendable {
     /// Without a background: the recording grows by the zoom level towards the camera's focus, and the
     /// view stops at the recording's edges.
     private func zoom(_ frame: CIImage, at time: Double) -> CIImage {
-        let state = zoomState(at: time)
-        guard state.amount > 0 else { return frame }
         let rect = CGRect(origin: .zero, size: videoSize)
-        let focus = camera?.focus(at: time) ?? CGPoint(x: 0.5, y: 0.5)
-        let (anchor, scale) = Self.camera(level: state.level, amount: state.amount, focus: CGPoint(x: focus.x * rect.width, y: (1 - focus.y) * rect.height), frame: rect)
-        return frame.transformed(by: Self.scale(around: anchor, by: scale)).cropped(to: rect)
+        guard let zoom = zoomCamera(at: time, window: rect) else { return frame }
+        return frame.transformed(by: Self.scale(around: zoom.anchor, by: zoom.scale)).cropped(to: rect)
+    }
+
+    /// Where the recording sits on the canvas before any zoom, and how much it's scaled down to fit:
+    /// the whole canvas without a background, or the area inside the padding with one.
+    private var windowLayout: (frame: CGRect, scale: CGFloat) {
+        let canvas = CGRect(origin: .zero, size: canvasSize)
+        guard settings.background != .none else { return (canvas, 1) }
+        let inset = settings.padding * min(canvas.width, canvas.height)
+        let scale = min(
+            (canvas.width - 2 * inset) / videoSize.width,
+            (canvas.height - 2 * inset) / videoSize.height
+        )
+        let size = CGSize(width: videoSize.width * scale, height: videoSize.height * scale)
+        return (CGRect(x: (canvas.width - size.width) / 2, y: (canvas.height - size.height) / 2, width: size.width, height: size.height), scale)
+    }
+
+    /// The zoom at `time`, as a scale around a fixed point on the canvas, or `nil` when not zoomed in.
+    private func zoomCamera(at time: Double, window: CGRect) -> (anchor: CGPoint, scale: CGFloat)? {
+        let state = zoomState(at: time)
+        guard state.amount > 0 else { return nil }
+        let focusFraction = camera?.focus(at: time) ?? CGPoint(x: 0.5, y: 0.5)
+        let focus = CGPoint(x: window.minX + focusFraction.x * window.width, y: window.minY + (1 - focusFraction.y) * window.height)
+        return Self.camera(level: state.level, amount: state.amount, focus: focus, frame: CGRect(origin: .zero, size: canvasSize))
+    }
+
+    /// Where a point of the recording shows up on the canvas at `time`, after placing and zooming.
+    private func videoToCanvas(at time: Double) -> CGAffineTransform {
+        let (frame, scale) = windowLayout
+        let placed = CGAffineTransform(scaleX: scale, y: scale).concatenating(CGAffineTransform(translationX: frame.minX, y: frame.minY))
+        guard let zoom = zoomCamera(at: time, window: frame) else { return placed }
+        return placed.concatenating(Self.scale(around: zoom.anchor, by: zoom.scale))
     }
 
     /// The camera for a zoom: the picture grows by up to `level` around one fixed anchor point. The
@@ -186,21 +296,8 @@ nonisolated struct FrameRenderer: @unchecked Sendable {
 
         let canvas = CGRect(origin: .zero, size: canvasSize)
         let shorterSide = min(canvas.width, canvas.height)
-        let inset = settings.padding * shorterSide
-        let scale = min(
-            (canvas.width - 2 * inset) / videoSize.width,
-            (canvas.height - 2 * inset) / videoSize.height
-        )
-        let size = CGSize(width: videoSize.width * scale, height: videoSize.height * scale)
-        let frame = CGRect(
-            x: (canvas.width - size.width) / 2,
-            y: (canvas.height - size.height) / 2,
-            width: size.width,
-            height: size.height
-        )
+        let (frame, scale) = windowLayout
         let radius = settings.cornerRadius * pixelsPerPoint * scale
-
-        let zoom = zoomState(at: time)
 
         let placed = video.transformed(by: CGAffineTransform(scaleX: scale, y: scale)
             .concatenating(CGAffineTransform(translationX: frame.minX, y: frame.minY)))
@@ -234,10 +331,7 @@ nonisolated struct FrameRenderer: @unchecked Sendable {
             background = gradient.outputImage ?? CIImage(color: CIColor(topLeft))
         }
 
-        if zoom.amount > 0 {
-            let focusFraction = camera?.focus(at: time) ?? CGPoint(x: 0.5, y: 0.5)
-            let focus = CGPoint(x: frame.minX + focusFraction.x * frame.width, y: frame.minY + (1 - focusFraction.y) * frame.height)
-            let (anchor, windowScale) = Self.camera(level: zoom.level, amount: zoom.amount, focus: focus, frame: canvas)
+        if let (anchor, windowScale) = zoomCamera(at: time, window: frame) {
             window = window.transformed(by: Self.scale(around: anchor, by: windowScale))
             background = background.transformed(by: Self.scale(around: anchor, by: 1 + (windowScale - 1) * settings.parallax))
         }

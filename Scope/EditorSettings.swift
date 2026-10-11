@@ -22,6 +22,8 @@ nonisolated struct EditorSettings: Equatable, Sendable {
     var zoomLevel = 1.5
     /// Seconds a zoom in or out takes to settle.
     var zoomTransition = 1.1
+    /// Blur things while they move, like a camera's shutter does, so zooms, pans and the cursor look smooth.
+    var motionBlur = true
 
     /// Show the webcam bubble, if the project has a webcam video.
     var webcamVisible = true
@@ -70,7 +72,7 @@ nonisolated struct EditorSettings: Equatable, Sendable {
 extension EditorSettings: Codable {
     private enum CodingKeys: String, CodingKey {
         case cursorSmoothing, cursorSize, showClicks
-        case autoZoom, zoomLevel, zoomTransition
+        case autoZoom, zoomLevel, zoomTransition, motionBlur
         case webcamVisible, webcamX, webcamY, webcamSize, webcamShape, webcamShadow, webcamMirrored
         case background, backgroundImageFileName, backgroundBlur, padding, cornerRadius, shadow, parallax
     }
@@ -90,6 +92,7 @@ extension EditorSettings: Codable {
         read(.autoZoom, into: &autoZoom)
         read(.zoomLevel, into: &zoomLevel)
         read(.zoomTransition, into: &zoomTransition)
+        read(.motionBlur, into: &motionBlur)
         read(.webcamVisible, into: &webcamVisible)
         read(.webcamX, into: &webcamX)
         read(.webcamY, into: &webcamY)
