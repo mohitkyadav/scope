@@ -15,6 +15,11 @@ struct ScopeApp: App {
             ContentView()
                 .environment(recorder)
         }
+        .windowToolbarStyle(.unified)
+
+        Settings {
+            SettingsView()
+        }
 
         WindowGroup("Editor", id: EditorView.windowID, for: URL.self) { $projectURL in
             if let projectURL {

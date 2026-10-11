@@ -9,8 +9,8 @@ import SwiftUI
 
 /// A 3-2-1 countdown shown in the middle of a screen before recording starts.
 enum Countdown {
-    /// Returns `false` if the countdown was cancelled.
-    static func run(on screen: NSScreen) async -> Bool {
+    /// Counts down from `seconds`. Returns `false` if the countdown was cancelled.
+    static func run(on screen: NSScreen, seconds: Int) async -> Bool {
         let model = CountdownModel()
 
         let panel = NSPanel(
@@ -31,7 +31,7 @@ enum Countdown {
         panel.orderFrontRegardless()
         defer { panel.orderOut(nil) }
 
-        for value in [3, 2, 1] {
+        for value in (1...max(seconds, 1)).reversed() {
             model.value = value
             do {
                 try await Task.sleep(for: .seconds(1))
@@ -45,7 +45,7 @@ enum Countdown {
 
 @Observable
 private final class CountdownModel {
-    var value = 3
+    var value = 0
 }
 
 private struct CountdownView: View {

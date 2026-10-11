@@ -27,10 +27,12 @@ struct ContentView: View {
                     .padding([.horizontal, .top], 20)
             }
 
-            Text("Recent Projects")
-                .font(.headline)
+            Text("Recent")
+                .font(.title.weight(.bold))
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .padding([.horizontal, .top], 20)
+                .padding(.horizontal, 24)
+                .padding(.top, 12)
+                .padding(.bottom, 4)
 
             if library.recordings.isEmpty {
                 ContentUnavailableView(
@@ -43,38 +45,32 @@ struct ContentView: View {
                 RecordingsList(library: library)
             }
 
-            Divider()
-
-            HStack(spacing: 16) {
-                if permission.isGranted {
-                    VStack(alignment: .leading, spacing: 10) {
-                        SourcePicker(sources: sources)
-                        AudioControls(
-                            settings: audio,
-                            microphoneLevel: microphoneMeter.level,
-                            systemAudioLevel: systemAudioMeter.level
-                        )
-                        CameraControls(settings: camera)
-                    }
-                    .disabled(recorder.state != .idle)
-                }
-
-                Spacer(minLength: 0)
-
-                if recorder.isRecording {
-                    Text("Press \(Recorder.stopShortcut) to stop from any app")
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
-                }
-
-                RecordButton(state: recorder.state, elapsed: recorder.elapsed) {
+            if permission.isGranted {
+                RecordingPanel(
+                    sources: sources,
+                    audio: audio,
+                    camera: camera,
+                    microphoneLevel: microphoneMeter.level,
+                    systemAudioLevel: systemAudioMeter.level,
+                    recorder: recorder,
+                    canRecord: canRecord
+                ) {
                     Task { await toggleRecording() }
                 }
-                .disabled(!canRecord)
+                .padding(16)
             }
-            .padding(20)
         }
-        .frame(minWidth: 640, minHeight: 400)
+        .toolbar {
+            AppTitleToolbarItem()
+            ToolbarItem(placement: .primaryAction) {
+                SettingsLink {
+                    Label("Settings", systemImage: "slider.horizontal.3")
+                }
+                .help("Settings")
+            }
+        }
+        .toolbar(removing: .title)
+        .frame(minWidth: 720, minHeight: 520)
         .onChange(of: scenePhase) {
             if scenePhase == .active {
                 permission.refresh()
@@ -197,6 +193,29 @@ struct ContentView: View {
         case .stopping:
             break
         }
+    }
+}
+
+/// Scope's icon and name at the top left of the main window.
+private struct AppTitleToolbarItem: ToolbarContent {
+    var body: some ToolbarContent {
+        if #available(macOS 26, *) {
+            ToolbarItem(placement: .navigation) { title }
+                .sharedBackgroundVisibility(.hidden)
+        } else {
+            ToolbarItem(placement: .navigation) { title }
+        }
+    }
+
+    private var title: some View {
+        HStack(spacing: 8) {
+            Image(nsImage: NSApp.applicationIconImage)
+                .resizable()
+                .frame(width: 22, height: 22)
+            Text("Scope")
+                .font(.title3.weight(.semibold))
+        }
+        .padding(.leading, 4)
     }
 }
 

@@ -69,8 +69,9 @@ final class Recorder: NSObject {
             }
         }
 
-        if let countdownScreen {
-            let countdownTask = Task { await Countdown.run(on: countdownScreen) }
+        let countdown = RecordingPreferences.countdown
+        if let countdownScreen, countdown > 0 {
+            let countdownTask = Task { await Countdown.run(on: countdownScreen, seconds: countdown) }
             self.countdownTask = countdownTask
             let finished = await countdownTask.value
             self.countdownTask = nil
@@ -94,7 +95,7 @@ final class Recorder: NSObject {
         )
         configuration.width = Int(size.width)
         configuration.height = Int(size.height)
-        configuration.minimumFrameInterval = CMTime(value: 1, timescale: 60)
+        configuration.minimumFrameInterval = CMTime(value: 1, timescale: CMTimeScale(RecordingPreferences.frameRate))
         configuration.queueDepth = 6
         // Scope draws its own cursor from the recorded cursor data, so leave the real one out.
         configuration.showsCursor = false

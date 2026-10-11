@@ -16,6 +16,18 @@ struct Recording: Identifiable, Hashable {
     let duration: TimeInterval?
 
     var id: URL { project.url }
+
+    /// Whether it's been changed in the editor since it was recorded.
+    var isEdited: Bool { lastEdited > date.addingTimeInterval(60) }
+
+    /// "Today at 18:54", "Yesterday at 22:01", or "9 October at 18:54".
+    var title: String {
+        let calendar = Calendar.current
+        let time = date.formatted(date: .omitted, time: .shortened)
+        if calendar.isDateInToday(date) { return "Today at \(time)" }
+        if calendar.isDateInYesterday(date) { return "Yesterday at \(time)" }
+        return "\(date.formatted(.dateTime.day().month(.wide))) at \(time)"
+    }
 }
 
 @Observable

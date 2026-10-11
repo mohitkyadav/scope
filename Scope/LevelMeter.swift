@@ -19,7 +19,7 @@ struct LevelMeter: View {
                     .frame(width: geometry.size.width * CGFloat(level))
             }
         }
-        .frame(width: 60, height: 6)
+        .frame(minWidth: 20, idealWidth: 60, maxWidth: 60, minHeight: 6, maxHeight: 6)
         .animation(.linear(duration: 0.05), value: level)
         .accessibilityElement()
         .accessibilityLabel("Level")

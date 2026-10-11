@@ -15,11 +15,31 @@ struct RecordingsList: View {
     @Environment(\.openWindow) private var openWindow
 
     var body: some View {
-        List(library.recordings, selection: $selection) { recording in
-            RecordingRow(recording: recording) {
-                library.showInFinder([recording.project.url])
+        List(selection: $selection) {
+            ForEach(Self.groups(library.recordings), id: \.title) { group in
+                Section {
+                    ForEach(group.recordings) { recording in
+                        RecordingRow(
+                            recording: recording,
+                            showInFinder: { library.showInFinder([recording.project.url]) },
+                            open: { openEditors([recording.id]) },
+                            playVideo: { library.playVideo([recording.id]) },
+                            moveToTrash: { projectsToTrash = [recording.id] }
+                        )
+                        .tag(recording.id)
+                        .listRowSeparator(.hidden)
+                    }
+                } header: {
+                    Text(group.title)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                }
+                .listSectionSeparator(.hidden)
             }
         }
+        .listStyle(.inset)
+        .scrollContentBackground(.hidden)
+        .alternatingRowBackgrounds(.disabled)
         .contextMenu(forSelectionType: Recording.ID.self) { urls in
             if !urls.isEmpty {
                 Button("Open in Editor") { openEditors(urls) }
@@ -66,8 +86,18 @@ struct RecordingsList: View {
             return "Move \(projectsToTrash.count) projects to the Trash?"
         }
         let recording = library.recordings.first { $0.id == url }
-        let name = recording.map { $0.date.formatted(date: .abbreviated, time: .shortened) } ?? url.deletingPathExtension().lastPathComponent
+        let name = recording?.title ?? url.deletingPathExtension().lastPathComponent
         return "Move the recording from \(name) to the Trash?"
+    }
+
+    /// Recordings grouped by the day they were made: Today, Yesterday, then Earlier, newest first.
+    private static func groups(_ recordings: [Recording]) -> [(title: String, recordings: [Recording])] {
+        let calendar = Calendar.current
+        let sorted = recordings.sorted { $0.date > $1.date }
+        let today = sorted.filter { calendar.isDateInToday($0.date) }
+        let yesterday = sorted.filter { calendar.isDateInYesterday($0.date) }
+        let earlier = sorted.filter { !calendar.isDateInToday($0.date) && !calendar.isDateInYesterday($0.date) }
+        return [("Today", today), ("Yesterday", yesterday), ("Earlier", earlier)].filter { !$0.1.isEmpty }
     }
 }
 
@@ -82,11 +112,14 @@ extension RecordingsList {
 private struct RecordingRow: View {
     let recording: Recording
     let showInFinder: () -> Void
+    let open: () -> Void
+    let playVideo: () -> Void
+    let moveToTrash: () -> Void
 
     @State private var thumbnail: NSImage?
 
     var body: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: 14) {
             Group {
                 if let thumbnail {
                     Image(nsImage: thumbnail)
@@ -98,22 +131,27 @@ private struct RecordingRow: View {
                         .foregroundStyle(.secondary)
                 }
             }
-            .frame(width: 80, height: 45)
+            .frame(width: 96, height: 56)
             .background(.quaternary)
-            .clipShape(.rect(cornerRadius: 5))
-
-            VStack(alignment: .leading, spacing: 2) {
-                Text(recording.date.formatted(date: .abbreviated, time: .shortened))
-                HStack(spacing: 4) {
-                    Text(recording.duration?.clockString ?? "–")
+            .clipShape(.rect(cornerRadius: 8, style: .continuous))
+            .overlay(alignment: .bottomTrailing) {
+                if let duration = recording.duration {
+                    Text(duration.clockString)
+                        .font(.caption.weight(.semibold))
                         .monospacedDigit()
-                    if recording.lastEdited > recording.date.addingTimeInterval(60) {
-                        Text("·")
-                        Text("Edited \(recording.lastEdited, format: .relative(presentation: .named))")
-                    }
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(Capsule().fill(.black.opacity(0.6)))
+                        .padding(4)
                 }
-                .font(.callout)
-                .foregroundStyle(.secondary)
+            }
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text(recording.title)
+                    .font(.body.weight(.semibold))
+                Text(recording.isEdited ? "Edited \(recording.lastEdited.formatted(.relative(presentation: .named)))" : "Not edited yet")
+                    .foregroundStyle(.secondary)
             }
 
             Spacer()
@@ -123,8 +161,27 @@ private struct RecordingRow: View {
             }
             .buttonStyle(.borderless)
             .help("Show in Finder")
+
+            Menu {
+                Button("Open in Editor", action: open)
+                Button("Play Video", action: playVideo)
+                Divider()
+                Button("Show in Finder", action: showInFinder)
+                Divider()
+                Button("Move to Trash…", role: .destructive, action: moveToTrash)
+            } label: {
+                Image(systemName: "ellipsis")
+                    .frame(width: 24, height: 24)
+                    .contentShape(Rectangle())
+            }
+            .menuStyle(.button)
+            .buttonStyle(.borderless)
+            .menuIndicator(.hidden)
+            .fixedSize()
+            .help("More")
         }
-        .padding(.vertical, 4)
+        .padding(.vertical, 6)
+        .padding(.horizontal, 4)
         .task(id: recording.id) {
             thumbnail = await Self.thumbnail(of: recording.project.videoURL)
         }

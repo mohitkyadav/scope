@@ -22,6 +22,8 @@ struct CaptureWindow: Identifiable {
     let appName: String
     let title: String
     let scWindow: SCWindow
+    /// The icon of the app the window belongs to.
+    let icon: NSImage?
 
     var label: String { "\(appName) — \(title)" }
 }
@@ -151,6 +153,7 @@ private extension CaptureWindow {
         self.appName = appName
         self.title = title
         scWindow = window
+        icon = window.owningApplication.flatMap { NSRunningApplication(processIdentifier: $0.processID)?.icon }
     }
 }
 
