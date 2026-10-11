@@ -18,10 +18,10 @@ nonisolated struct EditorSettings: Equatable, Sendable {
 
     /// Zoom in on the zoom segments.
     var autoZoom = true
-    /// How far to zoom in, e.g. 2 shows a quarter of the screen.
-    var zoomLevel = 2.0
-    /// Seconds spent zooming in or out.
-    var zoomTransition = 0.7
+    /// How much the picture grows when fully zoomed in, e.g. 1.5 makes everything half as big again.
+    var zoomLevel = 1.5
+    /// Seconds a zoom in or out takes to settle.
+    var zoomTransition = 1.1
 
     /// Show the webcam bubble, if the project has a webcam video.
     var webcamVisible = true
@@ -48,7 +48,7 @@ nonisolated struct EditorSettings: Equatable, Sendable {
     var shadow = true
     /// How much the background zooms along with the recording, from 0 (stays still) to 1 (as much
     /// as the recording). Less than the recording gives a sense of depth.
-    var parallax = 0.3
+    var parallax = 0.0
 
     /// The bubble's width in pixels on a frame of `canvas` size.
     func webcamDiameter(in canvas: CGSize) -> CGFloat {

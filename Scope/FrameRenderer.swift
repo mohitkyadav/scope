@@ -58,7 +58,7 @@ nonisolated struct FrameRenderer: @unchecked Sendable {
             frame = cursor.composited(over: frame)
         }
         let video = frame.cropped(to: videoRect)
-        var canvas = settings.background == .none ? zoom(video, by: zoomScale(at: time), at: time) : placeOnBackground(video, at: time)
+        var canvas = settings.background == .none ? zoom(video, at: time) : placeOnBackground(video, at: time)
         if settings.webcamVisible, let webcam, let bubble = bubble(webcam) {
             canvas = bubble.composited(over: canvas)
         }
@@ -136,38 +136,51 @@ nonisolated struct FrameRenderer: @unchecked Sendable {
         return state.amount > 0.001 ? state : AutoZoom.State()
     }
 
-    /// How much the recording is magnified at `time`: 1 when not zoomed, `zoomLevel` when fully zoomed.
-    private func zoomScale(at time: Double) -> Double {
-        zoomState(at: time).scale
+    /// Without a background: the recording grows by the zoom level towards the camera's focus, and the
+    /// view stops at the recording's edges.
+    private func zoom(_ frame: CIImage, at time: Double) -> CIImage {
+        let state = zoomState(at: time)
+        guard state.amount > 0 else { return frame }
+        let rect = CGRect(origin: .zero, size: videoSize)
+        let focus = camera?.focus(at: time) ?? CGPoint(x: 0.5, y: 0.5)
+        let (anchor, scale) = Self.camera(level: state.level, amount: state.amount, focus: CGPoint(x: focus.x * rect.width, y: (1 - focus.y) * rect.height), frame: rect)
+        return frame.transformed(by: Self.scale(around: anchor, by: scale)).cropped(to: rect)
     }
 
-    /// Scales the frame up by `scale` around the camera's focus point. The focus is kept far enough
-    /// from the edges that the zoomed view never shows past the edge of the recording.
-    private func zoom(_ frame: CIImage, by scale: Double, at time: Double) -> CIImage {
-        guard scale > 1.0001 else { return frame }
-
-        let visible = CGSize(width: videoSize.width / scale, height: videoSize.height / scale)
-        let focus = camera?.focus(at: time) ?? CGPoint(x: 0.5, y: 0.5)
+    /// The camera for a zoom: the picture grows by up to `level` around one fixed anchor point. The
+    /// anchor is chosen so that, fully zoomed in, the view is centred on `focus` but stops at the edges
+    /// of `frame`. Growing around a fixed point means the zoom moves in one smooth line, never
+    /// changing direction, like a camera moving in.
+    private static func camera(level: Double, amount: Double, focus: CGPoint, frame: CGRect) -> (anchor: CGPoint, scale: CGFloat) {
+        let view = CGSize(width: frame.width / level, height: frame.height / level)
         let center = CGPoint(
-            x: min(max(focus.x * videoSize.width, visible.width / 2), videoSize.width - visible.width / 2),
-            y: min(max((1 - focus.y) * videoSize.height, visible.height / 2), videoSize.height - visible.height / 2)
+            x: clamp(focus.x, between: frame.minX + view.width / 2, and: frame.maxX - view.width / 2),
+            y: clamp(focus.y, between: frame.minY + view.height / 2, and: frame.maxY - view.height / 2)
         )
+        // Fully zoomed in, `center` lands in the middle of the frame: x' = middle + level × (x − center).
+        // That transform leaves exactly one point where it was, which is the anchor.
+        let anchor = CGPoint(
+            x: (level * center.x - frame.midX) / (level - 1),
+            y: (level * center.y - frame.midY) / (level - 1)
+        )
+        return (anchor, 1 + (level - 1) * amount)
+    }
 
-        let transform = CGAffineTransform(
-            translationX: -(center.x - visible.width / 2),
-            y: -(center.y - visible.height / 2)
-        )
-        .concatenating(CGAffineTransform(scaleX: scale, y: scale))
-        return frame.transformed(by: transform).cropped(to: CGRect(origin: .zero, size: videoSize))
+    /// Scales by `scale` while leaving `point` where it is.
+    private static func scale(around point: CGPoint, by scale: CGFloat) -> CGAffineTransform {
+        CGAffineTransform(translationX: -point.x, y: -point.y)
+            .concatenating(CGAffineTransform(scaleX: scale, y: scale))
+            .concatenating(CGAffineTransform(translationX: point.x, y: point.y))
     }
 
     /// Shrinks the video into the padded area of the canvas, rounds its corners and puts it on the
     /// background with a soft shadow, like a window.
     ///
-    /// Zooming works like a camera moving in: the whole window comes forward towards the point being
-    /// zoomed in on, the padding and background slide smoothly out of view, and once the window fills
-    /// the frame no background shows at all. The background zooms too, but only `parallax` as much as
-    /// the window, which gives a sense of depth while zooming in and out.
+    /// Zooming works like a camera moving in on the whole picture: the window, with its corners and
+    /// shadow, grows by the zoom level towards the point being zoomed in on, and the view stops at the
+    /// edges of the frame, so near the window's edge the background beside it stays in view. The
+    /// background itself grows only `parallax` as much as the window (by default not at all), which
+    /// gives a sense of depth.
     private func placeOnBackground(_ video: CIImage, at time: Double) -> CIImage {
         guard let (topLeft, bottomRight) = settings.background.colors else { return video }
 
@@ -187,10 +200,7 @@ nonisolated struct FrameRenderer: @unchecked Sendable {
         )
         let radius = settings.cornerRadius * pixelsPerPoint * scale
 
-        // Fully zoomed in, the screen is magnified `zoomLevel` times, the same as without a background.
         let zoom = zoomState(at: time)
-        let amount = zoom.amount
-        let windowScale = 1 + (zoom.level / scale - 1) * amount
 
         let placed = video.transformed(by: CGAffineTransform(scaleX: scale, y: scale)
             .concatenating(CGAffineTransform(translationX: frame.minX, y: frame.minY)))
@@ -224,30 +234,12 @@ nonisolated struct FrameRenderer: @unchecked Sendable {
             background = gradient.outputImage ?? CIImage(color: CIColor(topLeft))
         }
 
-        if windowScale > 1.0001 {
+        if zoom.amount > 0 {
             let focusFraction = camera?.focus(at: time) ?? CGPoint(x: 0.5, y: 0.5)
             let focus = CGPoint(x: frame.minX + focusFraction.x * frame.width, y: frame.minY + (1 - focusFraction.y) * frame.height)
-
-            // Think of a camera looking at the unzoomed frame: its view is `windowScale` times smaller,
-            // and its centre moves from the middle of the frame towards the focus as the zoom grows.
-            // While the view is bigger than the window it keeps the whole window in sight; once it's
-            // smaller it stays inside the window (and off its rounded corners), so no background shows.
-            // Both limits meet when the sizes match, so the window never jumps and the background
-            // slides away and back smoothly.
-            let view = CGSize(width: canvas.width / windowScale, height: canvas.height / windowScale)
-            let wanted = CGPoint(x: canvas.midX + (focus.x - canvas.midX) * amount, y: canvas.midY + (focus.y - canvas.midY) * amount)
-            let inner = frame.insetBy(dx: radius * 0.3, dy: radius * 0.3)
-            let center = CGPoint(
-                x: Self.clamp(wanted.x, between: inner.minX + view.width / 2, and: inner.maxX - view.width / 2),
-                y: Self.clamp(wanted.y, between: inner.minY + view.height / 2, and: inner.maxY - view.height / 2)
-            )
-            let middle = CGPoint(x: canvas.midX, y: canvas.midY)
-            window = window.transformed(by: Self.zoom(around: center, by: windowScale, to: middle))
-
-            // The background is seen by the same camera from further away.
-            let depth = settings.parallax
-            let backgroundCenter = CGPoint(x: middle.x + (center.x - middle.x) * depth, y: middle.y + (center.y - middle.y) * depth)
-            background = background.transformed(by: Self.zoom(around: backgroundCenter, by: 1 + (windowScale - 1) * depth, to: middle))
+            let (anchor, windowScale) = Self.camera(level: zoom.level, amount: zoom.amount, focus: focus, frame: canvas)
+            window = window.transformed(by: Self.scale(around: anchor, by: windowScale))
+            background = background.transformed(by: Self.scale(around: anchor, by: 1 + (windowScale - 1) * settings.parallax))
         }
 
         return window.composited(over: background).cropped(to: canvas)
@@ -256,13 +248,6 @@ nonisolated struct FrameRenderer: @unchecked Sendable {
     /// Keeps `value` between two limits given in either order.
     private static func clamp(_ value: CGFloat, between a: CGFloat, and b: CGFloat) -> CGFloat {
         min(max(value, min(a, b)), max(a, b))
-    }
-
-    /// Scales by `scale` around `point` and moves `point` to `target`.
-    private static func zoom(around point: CGPoint, by scale: CGFloat, to target: CGPoint) -> CGAffineTransform {
-        CGAffineTransform(translationX: -point.x, y: -point.y)
-            .concatenating(CGAffineTransform(scaleX: scale, y: scale))
-            .concatenating(CGAffineTransform(translationX: target.x, y: target.y))
     }
 
     private func roundedRectangle(_ rect: CGRect, radius: CGFloat, color: CIColor) -> CIImage {

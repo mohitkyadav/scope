@@ -49,9 +49,10 @@ struct EditorInspector: View {
                 Toggle("Auto zoom", isOn: $settings.autoZoom)
 
                 Group {
-                    LabeledSlider("Level", value: $settings.zoomLevel, in: 1.25...3) {
-                        String(format: "%.1f×", $0)
+                    LabeledSlider("Level", value: $settings.zoomLevel, in: 1.1...3) {
+                        String(format: "%.2g×", $0)
                     }
+                    LevelPresets { settings.zoomLevel = $0 }
                     LabeledSlider("Transition", value: $settings.zoomTransition, in: 0.3...5) {
                         String(format: "%.1f s", $0)
                     }
@@ -153,10 +154,15 @@ extension EditorInspector {
                         onZoomChange(changed, true, "Change Zoom Level")
                     }
                 ),
-                in: 1.25...3,
-                format: { String(format: "%.1f×", $0) },
+                in: 1.1...3,
+                format: { String(format: "%.2g×", $0) },
                 onEditingChanged: { if !$0 { onZoomSliderReleased("Change Zoom Level") } }
             )
+            LevelPresets { level in
+                var changed = zoom
+                changed.level = level
+                onZoomChange(changed, false, "Change Zoom Level")
+            }
             LabeledSlider(
                 "Transition",
                 value: Binding(
@@ -194,6 +200,23 @@ extension EditorInspector {
         } footer: {
             Text(zoom.hasOwnSettings ? "This zoom has its own settings." : "Uses the zoom defaults below until you change something.")
                 .foregroundStyle(.secondary)
+        }
+    }
+}
+
+/// Quick picks for the zoom level: a gentle zoom, the usual one, and a close-up.
+private struct LevelPresets: View {
+    static let levels = [1.25, 1.5, 2.0]
+    let choose: (Double) -> Void
+
+    var body: some View {
+        LabeledContent("Presets") {
+            HStack(spacing: 6) {
+                ForEach(Self.levels, id: \.self) { level in
+                    Button(String(format: "%g×", level)) { choose(level) }
+                        .controlSize(.small)
+                }
+            }
         }
     }
 }

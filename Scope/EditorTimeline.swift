@@ -367,7 +367,7 @@ private struct TimelineTracks: View {
                 let start = map.outputTime(at: zoom.start)
                 let end = map.outputTime(at: zoom.end)
                 EditableBlock(
-                    title: String(format: "%.1f×", zoom.level ?? model.settings.zoomLevel),
+                    title: String(format: "%.2g×", zoom.level ?? model.settings.zoomLevel),
                     color: .purple,
                     isSelected: model.selection == .zoom(zoom.id),
                     canMove: true,

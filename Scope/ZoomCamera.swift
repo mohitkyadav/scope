@@ -15,8 +15,8 @@ nonisolated struct ZoomCamera: Sendable {
     private static let rate = 60.0
     /// The cursor can move this far from the centre, as a fraction of the zoomed-in view, before the camera follows.
     private static let deadZone = 0.25
-    /// Roughly how long the camera takes to catch up, in seconds.
-    private static let followTime = 0.45
+    /// How stiff the spring the camera pans on is; this settles in about a second, like the zooms.
+    private static let stiffness = 6.0
     /// A click this soon after a zoom starts is what the zoom is about, so it starts there.
     private static let startClickWindow = 1.5
 
@@ -54,13 +54,12 @@ nonisolated struct ZoomCamera: Sendable {
                 && (0...1).contains($0.x) && (0...1).contains($0.y)
         }
         var camera = clamp(firstClick.map { CGPoint(x: $0.x, y: $0.y) } ?? cursorPosition(at: segment.start), visible: visible)
-        var easedTarget = camera
+        var target = camera
+        var velocity = CGPoint.zero
         // A zoom that doesn't follow the cursor stays where it started.
         let follows = segment.followsCursor ?? true
 
         let step = 1 / rate
-        // Two gentle smoothing stages, so the camera eases into a move instead of jolting.
-        let follow = 1 - exp(-step / (followTime / 2))
         let count = max(Int(((segment.end - segment.start) * rate).rounded(.up)), 0) + 1
         var points: [CGPoint] = []
         points.reserveCapacity(count)
@@ -71,16 +70,20 @@ nonisolated struct ZoomCamera: Sendable {
                 continue
             }
             let time = segment.start + Double(index) * step
+            // The target only moves when the cursor leaves the middle of the view.
             let cursor = cursorPosition(at: time)
-            var target = easedTarget
             let reach = visible * deadZone
             if cursor.x - target.x > reach { target.x = cursor.x - reach }
             if target.x - cursor.x > reach { target.x = cursor.x + reach }
             if cursor.y - target.y > reach { target.y = cursor.y - reach }
             if target.y - cursor.y > reach { target.y = cursor.y + reach }
+            target = clamp(target, visible: visible)
 
-            easedTarget = clamp(mix(easedTarget, target, follow), visible: visible)
-            camera = clamp(mix(camera, easedTarget, follow), visible: visible)
+            // The camera follows the target on a critically damped spring: a quick start, a soft stop.
+            let omega = stiffness
+            velocity.x += (omega * omega * (target.x - camera.x) - 2 * omega * velocity.x) * step
+            velocity.y += (omega * omega * (target.y - camera.y) - 2 * omega * velocity.y) * step
+            camera = clamp(CGPoint(x: camera.x + velocity.x * step, y: camera.y + velocity.y * step), visible: visible)
             points.append(camera)
         }
         return Track(start: segment.start, end: segment.end, points: points)
@@ -92,7 +95,4 @@ nonisolated struct ZoomCamera: Sendable {
         return CGPoint(x: min(max(point.x, half), 1 - half), y: min(max(point.y, half), 1 - half))
     }
 
-    private static func mix(_ a: CGPoint, _ b: CGPoint, _ amount: Double) -> CGPoint {
-        CGPoint(x: a.x + (b.x - a.x) * amount, y: a.y + (b.y - a.y) * amount)
-    }
 }

@@ -75,8 +75,8 @@ nonisolated enum AutoZoom {
         var scale: Double { 1 + (level - 1) * amount }
     }
 
-    /// The zoom at `time`. Each segment eases in over its transition from its start and out over the
-    /// same time before its end, or half the segment each way if it's shorter than that. Segments
+    /// The zoom at `time`. Each segment springs in from its start and springs back out so it's done by
+    /// its end, each taking its transition time (or half the segment if that's shorter). Segments
     /// without their own level or transition use the defaults.
     static func state(at time: Double, segments: [ZoomSegment], defaultLevel: Double, defaultTransition: Double) -> State {
         var state = State()
@@ -84,9 +84,9 @@ nonisolated enum AutoZoom {
             let level = segment.level ?? defaultLevel
             guard level > 1 else { continue }
             let transition = max(min(segment.transition ?? defaultTransition, (segment.end - segment.start) / 2), 0.01)
-            let zoomingIn = ease((time - segment.start) / transition)
-            let zoomingOut = ease((segment.end - time) / transition)
-            let amount = min(zoomingIn, zoomingOut)
+            let zoomedIn = spring(time - segment.start, duration: transition)
+            let zoomedOut = spring(time - (segment.end - transition), duration: transition)
+            let amount = zoomedIn * (1 - zoomedOut)
             if amount > state.amount {
                 state = State(amount: amount, level: level)
             }
@@ -94,9 +94,13 @@ nonisolated enum AutoZoom {
         return state
     }
 
-    /// Slow at both ends, fast in the middle.
-    private static func ease(_ progress: Double) -> Double {
-        let x = min(max(progress, 0), 1)
-        return x < 0.5 ? 4 * x * x * x : 1 - pow(-2 * x + 2, 3) / 2
+    /// A critically damped spring going from 0 to 1 that has settled after `duration` seconds: it
+    /// starts quickly and lands softly, without overshooting. Half done after about a quarter of the
+    /// duration and 90% after about 60%, which is how polished screen recordings zoom.
+    static func spring(_ elapsed: Double, duration: Double) -> Double {
+        guard elapsed > 0 else { return 0 }
+        // (1 + x)·e^-x falls to 1% at x ≈ 6.64, so this stiffness settles in `duration`.
+        let x = 6.64 * elapsed / max(duration, 0.01)
+        return min((1 - (1 + x) * exp(-x)) / 0.99, 1)
     }
 }
