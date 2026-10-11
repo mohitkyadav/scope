@@ -27,13 +27,6 @@ struct ContentView: View {
                     .padding([.horizontal, .top], 20)
             }
 
-            Text("Recent")
-                .font(.title.weight(.bold))
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, 24)
-                .padding(.top, 12)
-                .padding(.bottom, 4)
-
             if library.recordings.isEmpty {
                 ContentUnavailableView(
                     "No Recordings",
@@ -62,6 +55,7 @@ struct ContentView: View {
         }
         .toolbar {
             AppTitleToolbarItem()
+            TrailingSpace()
             ToolbarItem(placement: .primaryAction) {
                 SettingsLink {
                     Label("Settings", systemImage: "slider.horizontal.3")

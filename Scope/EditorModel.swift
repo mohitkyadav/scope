@@ -62,6 +62,10 @@ final class EditorModel {
 
     /// Length of the recording, before any edits.
     private(set) var sourceDuration: TimeInterval = 0
+    /// When it was recorded.
+    private(set) var recordingDate: Date?
+    /// Whether any edits have been saved for this project.
+    private(set) var hasSavedEdits = false
     /// The size of the frames the renderer draws.
     var canvasSize: CGSize { videoSize }
     var hasWebcam: Bool { scene?.webcamTrackID != nil }
@@ -141,6 +145,8 @@ final class EditorModel {
         // A project that hasn't been edited yet has no project file: default settings, and the
         // whole recording with zooms suggested from its clicks.
         let file = try? ProjectFile.read(from: project.projectFileURL)
+        hasSavedEdits = file != nil
+        recordingDate = (try? project.url.resourceValues(forKeys: [.creationDateKey]))?.creationDate
         isRestoring = true
         settings = file?.settings ?? EditorSettings()
         loadBackgroundThumbnail()
@@ -855,6 +861,7 @@ final class EditorModel {
         saveTask = nil
         do {
             try ProjectFile(settings: settings, edits: edits).write(to: project.projectFileURL)
+            hasSavedEdits = true
         } catch {
             errorMessage = "Your changes couldn't be saved: \(error.localizedDescription)"
         }

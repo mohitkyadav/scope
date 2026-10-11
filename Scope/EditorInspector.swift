@@ -5,8 +5,19 @@
 
 import SwiftUI
 
-/// The settings panel on the right of the editor.
+/// The tabs of the editor's settings panel.
+enum InspectorTab: String, CaseIterable, Identifiable {
+    case style = "Style"
+    case zoom = "Zoom"
+    case cursor = "Cursor"
+
+    var id: Self { self }
+}
+
+/// The settings panel on the right of the editor, one tab at a time. A selected note's text shows
+/// above whichever tab is open.
 struct EditorInspector: View {
+    let tab: InspectorTab
     @Binding var settings: EditorSettings
     let zoomCount: Int
     let hasWebcam: Bool
@@ -28,10 +39,6 @@ struct EditorInspector: View {
 
     var body: some View {
         Form {
-            if let zoom = selectedZoom {
-                selectedZoomSection(zoom)
-            }
-
             if let noteText {
                 Section {
                     TextField("Text", text: noteText, axis: .vertical)
@@ -45,96 +52,122 @@ struct EditorInspector: View {
                 }
             }
 
-            Section {
-                Toggle("Auto zoom", isOn: $settings.autoZoom)
-
-                Group {
-                    LabeledSlider("Level", value: $settings.zoomLevel, in: 1.1...3) {
-                        String(format: "%.2g×", $0)
-                    }
-                    LevelPresets { settings.zoomLevel = $0 }
-                    LabeledSlider("Transition", value: $settings.zoomTransition, in: 0.3...5) {
-                        String(format: "%.1f s", $0)
-                    }
-                    LabeledContent("Zooms") {
-                        Button("Suggest from Clicks", action: suggestZooms)
-                    }
+            switch tab {
+            case .style:
+                backgroundSection
+                cameraSection
+            case .zoom:
+                if let zoom = selectedZoom {
+                    selectedZoomSection(zoom)
                 }
-                .disabled(!settings.autoZoom)
-            } header: {
-                Text("Zoom")
-            } footer: {
-                Text("Defaults for \(zoomCount == 1 ? "the 1 zoom" : "the \(zoomCount) zooms") on the timeline. Select a zoom to give it its own settings.")
-                    .foregroundStyle(.secondary)
-            }
-
-            Section("Cursor") {
-                LabeledSlider("Smoothing", value: $settings.cursorSmoothing, in: 0...1) {
-                    $0 == 0 ? "Off" : "\(Int($0 * 100))%"
-                }
-                LabeledSlider("Size", value: $settings.cursorSize, in: 0.5...3) {
-                    String(format: "%.1f×", $0)
-                }
-                Toggle("Show clicks", isOn: $settings.showClicks)
-            }
-
-            if hasWebcam {
-                Section {
-                    Toggle("Show bubble", isOn: $settings.webcamVisible)
-
-                    Group {
-                        LabeledSlider("Size", value: $settings.webcamSize, in: 0.1...0.45) {
-                            "\(Int(($0 * 100).rounded()))%"
-                        }
-                        Picker("Shape", selection: $settings.webcamShape) {
-                            ForEach(BubbleShape.allCases) { shape in
-                                Text(shape.name).tag(shape)
-                            }
-                        }
-                        .pickerStyle(.segmented)
-                        Toggle("Shadow", isOn: $settings.webcamShadow)
-                        Toggle("Mirror", isOn: $settings.webcamMirrored)
-                    }
-                    .disabled(!settings.webcamVisible)
-                } header: {
-                    Text("Webcam")
-                } footer: {
-                    Text("Drag the bubble in the preview to move it.")
-                        .foregroundStyle(.secondary)
-                }
-            }
-
-            Section("Background") {
-                BackgroundPicker(selection: $settings.background, imageThumbnail: backgroundThumbnail, chooseImage: chooseBackgroundImage)
-
-                if settings.background == .image {
-                    LabeledContent("Image") {
-                        Button(backgroundThumbnail == nil ? "Choose…" : "Change…", action: chooseBackgroundImage)
-                    }
-                    LabeledSlider("Blur", value: $settings.backgroundBlur, in: 0...1) {
-                        $0 == 0 ? "Off" : "\(Int(($0 * 100).rounded()))%"
-                    }
-                }
-
-                Group {
-                    LabeledSlider("Padding", value: $settings.padding, in: 0...0.2) {
-                        "\(Int(($0 * 100).rounded()))%"
-                    }
-                    LabeledSlider("Corners", value: $settings.cornerRadius, in: 0...40) {
-                        "\(Int($0.rounded()))"
-                    }
-                    Toggle("Shadow", isOn: $settings.shadow)
-                    LabeledSlider("Parallax", value: $settings.parallax, in: 0...1) {
-                        "\(Int(($0 * 100).rounded()))%"
-                    }
-                    .help("How much the background zooms along with the recording")
-                }
-                .disabled(settings.background == .none)
+                zoomDefaultsSection
+            case .cursor:
+                cursorSection
             }
         }
         .formStyle(.grouped)
+        .scrollContentBackground(.hidden)
         .onChange(of: isEditingNote) {
             onNoteEditingChanged(isEditingNote)
+        }
+    }
+
+    private var backgroundSection: some View {
+        Section("Background") {
+            BackgroundPicker(selection: $settings.background, imageThumbnail: backgroundThumbnail, chooseImage: chooseBackgroundImage)
+
+            if settings.background == .image {
+                LabeledContent("Image") {
+                    Button(backgroundThumbnail == nil ? "Choose…" : "Change…", action: chooseBackgroundImage)
+                }
+                LabeledSlider("Blur", value: $settings.backgroundBlur, in: 0...1) {
+                    $0 == 0 ? "Off" : "\(Int(($0 * 100).rounded()))%"
+                }
+            }
+
+            Group {
+                LabeledSlider("Padding", value: $settings.padding, in: 0...0.2) {
+                    "\(Int(($0 * 100).rounded()))%"
+                }
+                LabeledSlider("Corners", value: $settings.cornerRadius, in: 0...40) {
+                    "\(Int($0.rounded()))"
+                }
+                Toggle("Shadow", isOn: $settings.shadow)
+                LabeledSlider("Parallax", value: $settings.parallax, in: 0...1) {
+                    "\(Int(($0 * 100).rounded()))%"
+                }
+                .help("How much the background zooms along with the recording")
+            }
+            .disabled(settings.background == .none)
+        }
+    }
+
+    /// The webcam bubble, called the camera overlay here.
+    @ViewBuilder
+    private var cameraSection: some View {
+        Section {
+            if hasWebcam {
+                Toggle("Overlay", isOn: $settings.webcamVisible)
+                if settings.webcamVisible {
+                    LabeledSlider("Size", value: $settings.webcamSize, in: 0.1...0.45) {
+                        "\(Int(($0 * 100).rounded()))%"
+                    }
+                    Picker("Shape", selection: $settings.webcamShape) {
+                        ForEach(BubbleShape.allCases) { shape in
+                            Text(shape.name).tag(shape)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    Toggle("Shadow", isOn: $settings.webcamShadow)
+                    Toggle("Mirror", isOn: $settings.webcamMirrored)
+                }
+            } else {
+                LabeledContent("Overlay", value: "No camera")
+            }
+        } header: {
+            Text("Camera")
+        } footer: {
+            if hasWebcam, settings.webcamVisible {
+                Text("Drag the camera in the preview to move it.")
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    private var zoomDefaultsSection: some View {
+        Section {
+            Toggle("Auto zoom", isOn: $settings.autoZoom)
+
+            Group {
+                LabeledSlider("Level", value: $settings.zoomLevel, in: 1.1...3) {
+                    String(format: "%.2g×", $0)
+                }
+                LevelPresets { settings.zoomLevel = $0 }
+                LabeledSlider("Transition", value: $settings.zoomTransition, in: 0.3...5) {
+                    String(format: "%.1f s", $0)
+                }
+                LabeledContent("Zooms") {
+                    Button("Suggest from Clicks", action: suggestZooms)
+                }
+            }
+            .disabled(!settings.autoZoom)
+        } header: {
+            Text(selectedZoom == nil ? "Zoom" : "Defaults")
+        } footer: {
+            Text("Defaults for \(zoomCount == 1 ? "the 1 zoom" : "the \(zoomCount) zooms") on the timeline. Select a zoom to give it its own settings.")
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private var cursorSection: some View {
+        Section("Cursor") {
+            LabeledSlider("Smoothing", value: $settings.cursorSmoothing, in: 0...1) {
+                $0 == 0 ? "Off" : "\(Int($0 * 100))%"
+            }
+            LabeledSlider("Size", value: $settings.cursorSize, in: 0.5...3) {
+                String(format: "%.1f×", $0)
+            }
+            Toggle("Show clicks", isOn: $settings.showClicks)
         }
     }
 }
@@ -221,15 +254,14 @@ private struct LevelPresets: View {
     }
 }
 
-/// A row of swatches, one per background. The image swatch shows the chosen image, or asks for one.
+/// A grid of rounded swatches, one per background. The image swatch shows the chosen image, or asks for one.
 private struct BackgroundPicker: View {
     @Binding var selection: Background
     let imageThumbnail: NSImage?
     let chooseImage: () -> Void
 
     var body: some View {
-        // Adaptive columns wrap onto a second row instead of forcing the panel wider than it is.
-        LazyVGrid(columns: [GridItem(.adaptive(minimum: 28, maximum: 28), spacing: 10)], alignment: .leading, spacing: 10) {
+        LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 10), count: 5), spacing: 10) {
             ForEach(Background.allCases) { background in
                 Button {
                     if background == .image, imageThumbnail == nil {
@@ -239,12 +271,17 @@ private struct BackgroundPicker: View {
                     }
                 } label: {
                     swatch(for: background)
-                        .frame(width: 28, height: 28)
+                        .aspectRatio(1, contentMode: .fit)
+                        .clipShape(.rect(cornerRadius: 10, style: .continuous))
+                        .overlay {
+                            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                .strokeBorder(Color.scopeStroke)
+                        }
+                        .padding(3)
                         .overlay {
                             if background == selection {
-                                Circle()
-                                    .stroke(Color.accentColor, lineWidth: 2)
-                                    .padding(-4)
+                                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                    .strokeBorder(Color.accentColor, lineWidth: 2.5)
                             }
                         }
                 }
@@ -264,21 +301,15 @@ private struct BackgroundPicker: View {
                 Image(nsImage: imageThumbnail)
                     .resizable()
                     .aspectRatio(contentMode: .fill)
-                    .clipShape(Circle())
-                    .overlay(Circle().stroke(.separator))
             } else {
-                Circle()
-                    .stroke(.separator)
-                    .overlay(Image(systemName: "photo").foregroundStyle(.secondary))
+                Color.scopePill
+                    .overlay(Image(systemName: "photo").font(.title3).foregroundStyle(.secondary))
             }
         } else if let (topLeft, bottomRight) = background.colors {
-            Circle()
-                .fill(LinearGradient(colors: [Color(topLeft), Color(bottomRight)], startPoint: .topLeading, endPoint: .bottomTrailing))
-                .overlay(Circle().stroke(.separator))
+            LinearGradient(colors: [Color(topLeft), Color(bottomRight)], startPoint: .topLeading, endPoint: .bottomTrailing)
         } else {
-            Circle()
-                .stroke(.separator)
-                .overlay(Image(systemName: "nosign").foregroundStyle(.secondary))
+            Color.scopePill
+                .overlay(Image(systemName: "nosign").font(.title3).foregroundStyle(.secondary))
         }
     }
 }
@@ -322,6 +353,6 @@ struct LabeledSlider: View {
 }
 
 #Preview {
-    EditorInspector(settings: .constant(EditorSettings()), zoomCount: 3, hasWebcam: true)
+    EditorInspector(tab: .style, settings: .constant(EditorSettings()), zoomCount: 3, hasWebcam: true)
         .frame(width: 300)
 }

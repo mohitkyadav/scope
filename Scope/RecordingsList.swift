@@ -15,27 +15,16 @@ struct RecordingsList: View {
     @Environment(\.openWindow) private var openWindow
 
     var body: some View {
-        List(selection: $selection) {
-            ForEach(Self.groups(library.recordings), id: \.title) { group in
-                Section {
-                    ForEach(group.recordings) { recording in
-                        RecordingRow(
-                            recording: recording,
-                            showInFinder: { library.showInFinder([recording.project.url]) },
-                            open: { openEditors([recording.id]) },
-                            playVideo: { library.playVideo([recording.id]) },
-                            moveToTrash: { projectsToTrash = [recording.id] }
-                        )
-                        .tag(recording.id)
-                        .listRowSeparator(.hidden)
-                    }
-                } header: {
-                    Text(group.title)
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(.secondary)
-                }
-                .listSectionSeparator(.hidden)
-            }
+        // Newest recording first.
+        List(library.recordings.sorted { $0.date > $1.date }, selection: $selection) { recording in
+            RecordingRow(
+                recording: recording,
+                showInFinder: { library.showInFinder([recording.project.url]) },
+                open: { openEditors([recording.id]) },
+                playVideo: { library.playVideo([recording.id]) },
+                moveToTrash: { projectsToTrash = [recording.id] }
+            )
+            .listRowSeparator(.hidden)
         }
         .listStyle(.inset)
         .scrollContentBackground(.hidden)
@@ -88,16 +77,6 @@ struct RecordingsList: View {
         let recording = library.recordings.first { $0.id == url }
         let name = recording?.title ?? url.deletingPathExtension().lastPathComponent
         return "Move the recording from \(name) to the Trash?"
-    }
-
-    /// Recordings grouped by the day they were made: Today, Yesterday, then Earlier, newest first.
-    private static func groups(_ recordings: [Recording]) -> [(title: String, recordings: [Recording])] {
-        let calendar = Calendar.current
-        let sorted = recordings.sorted { $0.date > $1.date }
-        let today = sorted.filter { calendar.isDateInToday($0.date) }
-        let yesterday = sorted.filter { calendar.isDateInYesterday($0.date) }
-        let earlier = sorted.filter { !calendar.isDateInToday($0.date) && !calendar.isDateInYesterday($0.date) }
-        return [("Today", today), ("Yesterday", yesterday), ("Earlier", earlier)].filter { !$0.1.isEmpty }
     }
 }
 

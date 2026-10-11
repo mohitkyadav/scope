@@ -26,7 +26,8 @@ struct ScopeApp: App {
                 EditorView(project: ScopeProject(url: projectURL))
             }
         }
-        .defaultSize(width: 1100, height: 720)
+        .defaultSize(width: 1200, height: 760)
+        .windowToolbarStyle(.unified)
         .commands {
             ProjectCommands()
         }

@@ -82,117 +82,165 @@ private struct TimelineToolbar: View {
     @State private var isImportingWebcam = false
 
     var body: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: 14) {
             Button(action: model.togglePlayback) {
                 Image(systemName: model.isPlaying ? "pause.fill" : "play.fill")
-                    .font(.title3)
-                    .frame(width: 22, height: 22)
+                    .font(.body)
+                    .frame(width: 34, height: 34)
+                    .background(Circle().fill(Color.scopePill))
+                    .overlay(Circle().strokeBorder(Color.scopeStroke))
+                    .contentShape(Circle())
             }
-            .buttonStyle(.borderless)
+            .buttonStyle(.plain)
             .keyboardShortcut(model.isEditingText ? nil : KeyboardShortcut(.space, modifiers: []))
             .help(model.isPlaying ? "Pause (Space)" : "Play (Space)")
+            .accessibilityLabel(model.isPlaying ? "Pause" : "Play")
 
-            Text("\(model.currentTime.timecodeString) / \(model.duration.timecodeString)")
-                .monospacedDigit()
-                .foregroundStyle(.secondary)
+            HStack(spacing: 4) {
+                Text(model.currentTime.timecodeString)
+                    .fontWeight(.semibold)
+                Text("/ \(model.duration.timecodeString)")
+                    .foregroundStyle(.secondary)
+            }
+            .monospacedDigit()
 
-            Divider().frame(height: 18)
+            Spacer(minLength: 8)
 
-            editingButtons
-                .labelStyle(.iconOnly)
+            PillGroup {
+                splitButton
+                deleteButton
+            }
+            .labelStyle(.iconOnly)
 
-            Spacer()
+            PillGroup {
+                speedMenu
+            }
 
-            Image(systemName: "minus.magnifyingglass")
-                .foregroundStyle(.secondary)
-            Slider(value: $magnification, in: 1...20)
-                .frame(width: 120)
-                .help("Zoom the timeline")
-            Image(systemName: "plus.magnifyingglass")
-                .foregroundStyle(.secondary)
+            PillGroup {
+                addZoomButton
+                    .labelStyle(.titleAndIcon)
+                addNoteButton
+                    .labelStyle(.titleAndIcon)
+                addAudioButton
+                    .labelStyle(.iconOnly)
+                webcamButton
+                    .labelStyle(.iconOnly)
+            }
+
+            Spacer(minLength: 12)
+
+            HStack(spacing: 6) {
+                Image(systemName: "minus.magnifyingglass")
+                    .foregroundStyle(.secondary)
+                Slider(value: $magnification, in: 1...20)
+                    .frame(minWidth: 50, maxWidth: 110)
+                    .help("Zoom the timeline")
+                Image(systemName: "plus.magnifyingglass")
+                    .foregroundStyle(.secondary)
+            }
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
     }
 
-    @ViewBuilder
-    private var editingButtons: some View {
-            Button {
-                model.splitClip(at: model.currentTime, undoManager: undoManager)
-            } label: {
-                Label("Split", systemImage: "scissors")
-            }
-            .keyboardShortcut("b", modifiers: .command)
-            .help("Split the clip at the playhead (⌘B)")
+    private var splitButton: some View {
+        Button {
+            model.splitClip(at: model.currentTime, undoManager: undoManager)
+        } label: {
+            Label("Split", systemImage: "scissors")
+        }
+        .keyboardShortcut("b", modifiers: .command)
+        .help("Split the clip at the playhead (⌘B)")
+    }
 
-            Button(role: .destructive) {
-                model.deleteSelection(undoManager: undoManager)
-            } label: {
-                Label("Delete", systemImage: "trash")
-            }
-            .keyboardShortcut(model.isEditingText ? nil : KeyboardShortcut(.delete, modifiers: []))
-            .disabled(!model.canDeleteSelection)
-            .help("Delete the selected item (Delete)")
+    private var deleteButton: some View {
+        Button(role: .destructive) {
+            model.deleteSelection(undoManager: undoManager)
+        } label: {
+            Label("Delete", systemImage: "trash")
+        }
+        .keyboardShortcut(model.isEditingText ? nil : KeyboardShortcut(.delete, modifiers: []))
+        .disabled(!model.canDeleteSelection)
+        .help("Delete the selected item (Delete)")
+    }
 
-            Menu {
-                ForEach(EditorModel.speeds, id: \.self) { speed in
-                    Button {
-                        if let clip = model.speedTarget {
-                            model.setSpeed(speed, ofClip: clip.id, undoManager: undoManager)
-                        }
-                    } label: {
-                        if model.speedTarget?.speed == speed {
-                            Label(String(format: "%g×", speed), systemImage: "checkmark")
-                        } else {
-                            Text(String(format: "%g×", speed))
-                        }
+    private var speedMenu: some View {
+        Menu {
+            ForEach(EditorModel.speeds, id: \.self) { speed in
+                Button {
+                    if let clip = model.speedTarget {
+                        model.setSpeed(speed, ofClip: clip.id, undoManager: undoManager)
+                    }
+                } label: {
+                    if model.speedTarget?.speed == speed {
+                        Label(String(format: "%g×", speed), systemImage: "checkmark")
+                    } else {
+                        Text(String(format: "%g×", speed))
                     }
                 }
-            } label: {
-                Label(model.speedTarget.map { String(format: "%g×", $0.speed) } ?? "Speed", systemImage: "gauge.with.dots.needle.67percent")
             }
-            .labelStyle(.titleAndIcon)
-            .fixedSize()
-            .disabled(model.speedTarget == nil)
-            .help("Play the selected clip, or the clip at the playhead, faster or slower. Split first to change part of a clip.")
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: "gauge.with.dots.needle.67percent")
+                Text(model.speedTarget.map { String(format: "%g×", $0.speed) } ?? "1×")
+                    .monospacedDigit()
+                Image(systemName: "chevron.down")
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .menuStyle(.button)
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .disabled(model.speedTarget == nil)
+        .help("Play the selected clip, or the clip at the playhead, faster or slower. Split first to change part of a clip.")
+        .accessibilityLabel("Speed")
+    }
 
-            Button {
-                model.addZoom(undoManager: undoManager)
-            } label: {
-                Label("Add Zoom", systemImage: "plus.magnifyingglass")
-            }
-            .help("Add a zoom at the playhead")
+    private var addZoomButton: some View {
+        Button {
+            model.addZoom(undoManager: undoManager)
+        } label: {
+            Label("Zoom", systemImage: "plus.magnifyingglass")
+        }
+        .help("Add a zoom at the playhead")
+    }
 
-            Button {
-                model.addNote(undoManager: undoManager)
-            } label: {
-                Label("Add Note", systemImage: "text.bubble")
-            }
-            .help("Add a note at the playhead")
+    private var addNoteButton: some View {
+        Button {
+            model.addNote(undoManager: undoManager)
+        } label: {
+            Label("Note", systemImage: "text.bubble")
+        }
+        .help("Add a note at the playhead")
+    }
 
-            Button {
-                isImportingAudio = true
-            } label: {
-                Label("Add Audio", systemImage: "music.note")
+    private var addAudioButton: some View {
+        Button {
+            isImportingAudio = true
+        } label: {
+            Label("Add Audio", systemImage: "music.note")
+        }
+        .help("Add music or a voice-over at the playhead")
+        .fileImporter(isPresented: $isImportingAudio, allowedContentTypes: [.audio]) { result in
+            if case .success(let url) = result {
+                Task { await model.importAudio(from: url, undoManager: undoManager) }
             }
-            .help("Add music or a voice-over at the playhead")
-            .fileImporter(isPresented: $isImportingAudio, allowedContentTypes: [.audio]) { result in
-                if case .success(let url) = result {
-                    Task { await model.importAudio(from: url, undoManager: undoManager) }
-                }
-            }
+        }
+    }
 
-            Button {
-                isImportingWebcam = true
-            } label: {
-                Label("Webcam Video", systemImage: "video.badge.plus")
+    private var webcamButton: some View {
+        Button {
+            isImportingWebcam = true
+        } label: {
+            Label("Webcam Video", systemImage: "video.badge.plus")
+        }
+        .help("Use another video for the webcam bubble, starting at the playhead")
+        .fileImporter(isPresented: $isImportingWebcam, allowedContentTypes: [.movie]) { result in
+            if case .success(let url) = result {
+                Task { await model.importWebcam(from: url, undoManager: undoManager) }
             }
-            .help("Use another video for the webcam bubble, starting at the playhead")
-            .fileImporter(isPresented: $isImportingWebcam, allowedContentTypes: [.movie]) { result in
-                if case .success(let url) = result {
-                    Task { await model.importWebcam(from: url, undoManager: undoManager) }
-                }
-            }
+        }
     }
 }
 
@@ -329,17 +377,29 @@ private struct TimelineTracks: View {
                                 model.seek(to: location.x / pointsPerSecond)
                             }
                         items(for: row)
+                        if row == .notes, model.edits.notes.isEmpty {
+                            Text("Click Note to add one at the playhead")
+                                .font(.callout)
+                                .foregroundStyle(.tertiary)
+                                .padding(.leading, 10)
+                                .allowsHitTesting(false)
+                        }
                     }
                     .frame(height: row.height)
                     .overlay(alignment: .bottom) { Divider().opacity(0.5) }
                 }
             }
 
-            Rectangle()
-                .fill(.red)
-                .frame(width: 2)
-                .offset(x: model.currentTime * pointsPerSecond - 1)
-                .allowsHitTesting(false)
+            VStack(spacing: 0) {
+                Capsule()
+                    .fill(.red)
+                    .frame(width: 11, height: 18)
+                Rectangle()
+                    .fill(.red)
+                    .frame(width: 2)
+            }
+            .offset(x: model.currentTime * pointsPerSecond - 5.5, y: 3)
+            .allowsHitTesting(false)
         }
     }
 
@@ -351,9 +411,10 @@ private struct TimelineTracks: View {
             ForEach(Array(model.edits.clips.enumerated()), id: \.element.id) { index, clip in
                 EditableBlock(
                     title: clip.speed == 1 ? nil : String(format: "%g×", clip.speed),
-                    color: .accentColor,
+                    color: .scopeClip,
                     isSelected: model.selection == .clip(clip.id),
                     canMove: false,
+                    selectionColor: .scopeSelection,
                     onSelect: { model.selection = .clip(clip.id) },
                     onDrag: { edit, points in model.dragClip(clip.id, edit, by: points / pointsPerSecond) },
                     onDragEnd: { _ in model.endGesture("Trim Clip", undoManager: undoManager) }
@@ -368,9 +429,11 @@ private struct TimelineTracks: View {
                 let end = map.outputTime(at: zoom.end)
                 EditableBlock(
                     title: String(format: "%.2g×", zoom.level ?? model.settings.zoomLevel),
-                    color: .purple,
+                    color: .scopeZoom,
                     isSelected: model.selection == .zoom(zoom.id),
                     canMove: true,
+                    icon: "magnifyingglass",
+                    isCapsule: true,
                     onSelect: { model.selection = .zoom(zoom.id) },
                     onDrag: { edit, points in model.dragZoom(zoom.id, edit, by: points / pointsPerSecond) },
                     onDragEnd: { edit in model.endGesture(edit == .move ? "Move Zoom" : "Resize Zoom", undoManager: undoManager) }
@@ -385,9 +448,11 @@ private struct TimelineTracks: View {
                 let end = map.outputTime(at: note.end)
                 EditableBlock(
                     title: note.text,
-                    color: .orange,
+                    color: .scopeNote,
                     isSelected: model.selection == .note(note.id),
                     canMove: true,
+                    icon: "text.bubble",
+                    isCapsule: true,
                     onSelect: { model.selection = .note(note.id) },
                     onDrag: { edit, points in model.dragNote(note.id, edit, by: points / pointsPerSecond) },
                     onDragEnd: { edit in model.endGesture(edit == .move ? "Move Note" : "Resize Note", undoManager: undoManager) }
@@ -453,6 +518,9 @@ struct EditableBlock: View {
     let isSelected: Bool
     let canMove: Bool
     var canTrim = true
+    var icon: String?
+    var isCapsule = false
+    var selectionColor = Color.white
     let onSelect: () -> Void
     let onDrag: (BlockEdit, Double) -> Void
     let onDragEnd: (BlockEdit) -> Void
@@ -460,7 +528,7 @@ struct EditableBlock: View {
     @State private var isHovering = false
 
     var body: some View {
-        TimelineBlock(title: title, color: color, isSelected: isSelected)
+        TimelineBlock(title: title, color: color, isSelected: isSelected, icon: icon, isCapsule: isCapsule, selectionColor: selectionColor)
             .contentShape(Rectangle())
             .onTapGesture(perform: onSelect)
             .gesture(canMove ? drag(.move) : nil)
@@ -501,24 +569,37 @@ struct TimelineBlock: View {
     let title: String?
     let color: Color
     let isSelected: Bool
+    var icon: String?
+    /// Zooms and notes are pills; clips and audio are rounded bars.
+    var isCapsule = false
+    var selectionColor = Color.white
 
     var body: some View {
-        RoundedRectangle(cornerRadius: 5, style: .continuous)
-            .fill(color.opacity(isSelected ? 0.9 : 0.55))
+        let shape = RoundedRectangle(cornerRadius: isCapsule ? 100 : 7, style: .continuous)
+        shape
+            .fill(color.opacity(isSelected || isCapsule ? 0.95 : 0.75))
             .overlay {
-                RoundedRectangle(cornerRadius: 5, style: .continuous)
-                    .strokeBorder(isSelected ? Color.white : color, lineWidth: isSelected ? 2 : 1)
+                shape.strokeBorder(isSelected ? selectionColor : Color.white.opacity(0.12), lineWidth: isSelected ? 3 : 1)
             }
             .overlay(alignment: .leading) {
-                if let title {
-                    Text(title)
-                        .font(.caption.weight(.medium))
-                        .foregroundStyle(.white)
-                        .lineLimit(1)
-                        .padding(.horizontal, 10)
+                if title != nil || icon != nil {
+                    HStack(spacing: 4) {
+                        if let icon {
+                            Image(systemName: icon)
+                                .font(.caption2.weight(.bold))
+                        }
+                        if let title {
+                            Text(title)
+                                .font(.caption.weight(.semibold))
+                                .monospacedDigit()
+                        }
+                    }
+                    .foregroundStyle(.white)
+                    .lineLimit(1)
+                    .padding(.horizontal, 10)
                 }
             }
-            .padding(.vertical, 3)
+            .padding(.vertical, isCapsule ? 4 : 3)
     }
 }
 

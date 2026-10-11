@@ -69,9 +69,12 @@ struct PillGroup<Content: View>: View {
             content
         }
         .buttonStyle(PillItemStyle())
+        .lineLimit(1)
         .padding(3)
         .background(Capsule().fill(Color.scopePill))
         .overlay(Capsule().strokeBorder(Color.scopeStroke))
+        // Keep the pill its natural size; other things in the row give way instead.
+        .fixedSize()
     }
 }
 
@@ -86,5 +89,15 @@ struct PillItemStyle: ButtonStyle {
             .foregroundStyle(isEnabled ? Color.primary : Color.secondary.opacity(0.6))
             .background(Capsule().fill(configuration.isPressed ? Color.scopePillSelected : .clear))
             .contentShape(Capsule())
+    }
+}
+
+/// Pushes the toolbar items after it to the right edge. With the window title hidden, macOS 26
+/// otherwise lines toolbar items up next to each other on the left.
+struct TrailingSpace: ToolbarContent {
+    var body: some ToolbarContent {
+        if #available(macOS 26, *) {
+            ToolbarSpacer(.flexible)
+        }
     }
 }
