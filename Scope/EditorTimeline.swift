@@ -154,6 +154,10 @@ private struct TimelineToolbar: View {
                     .labelStyle(.iconOnly)
                 webcamButton
                     .labelStyle(.iconOnly)
+                if model.hasWebcam {
+                    hideWebcamButton
+                        .labelStyle(.iconOnly)
+                }
             }
 
             if showsZoomSlider {
@@ -262,6 +266,16 @@ private struct TimelineToolbar: View {
             Label("Webcam Video", systemImage: "video.badge.plus")
         }
         .help("Use another video for the webcam bubble, starting at the playhead")
+    }
+
+    private var hideWebcamButton: some View {
+        Button {
+            model.hideWebcam(undoManager: undoManager)
+        } label: {
+            Label("Hide Camera", systemImage: "video.slash")
+        }
+        .disabled(!model.settings.webcamVisible)
+        .help("Hide the camera for a while from the playhead")
     }
 }
 
@@ -499,6 +513,24 @@ private struct TimelineTracks: View {
                 .frame(width: max((end - start) * pointsPerSecond, 12))
                 .offset(x: start * pointsPerSecond)
                 .help("Drag to line the webcam up with the recording")
+            }
+            // Where the camera is hidden, over the webcam's own bar.
+            ForEach(model.edits.webcamHides) { hide in
+                let start = map.outputTime(at: hide.start)
+                let end = map.outputTime(at: hide.end)
+                EditableBlock(
+                    title: "Hidden",
+                    color: .gray,
+                    isSelected: model.selection == .webcamHide(hide.id),
+                    canMove: true,
+                    icon: "video.slash",
+                    isCapsule: true,
+                    onSelect: { model.selection = .webcamHide(hide.id) },
+                    onDrag: { edit, points in model.dragWebcamHide(hide.id, edit, by: points / pointsPerSecond) },
+                    onDragEnd: { edit in model.endGesture(edit == .move ? "Move Hidden Camera" : "Resize Hidden Camera", undoManager: undoManager) }
+                )
+                .frame(width: max((end - start) * pointsPerSecond, 12))
+                .offset(x: start * pointsPerSecond)
             }
 
         case .recordedAudio:

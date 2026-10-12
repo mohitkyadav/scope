@@ -21,6 +21,7 @@ enum TimelineSelection: Equatable {
     case clip(UUID)
     case zoom(UUID)
     case note(UUID)
+    case webcamHide(UUID)
     case audio(UUID)
 }
 
@@ -283,7 +284,7 @@ final class EditorModel {
             player.currentItem?.audioMix = scene?.audioMix(edits: edits)
         }
 
-        if edits.zooms != old.zooms || edits.notes != old.notes {
+        if edits.zooms != old.zooms || edits.notes != old.notes || edits.webcamHides != old.webcamHides {
             scheduleRender()
         }
     }
@@ -373,6 +374,8 @@ final class EditorModel {
             perform("Delete Zoom", undoManager: undoManager) { $0.zooms.removeAll { $0.id == id } }
         case .note(let id):
             perform("Delete Note", undoManager: undoManager) { $0.notes.removeAll { $0.id == id } }
+        case .webcamHide(let id):
+            perform("Show Camera", undoManager: undoManager) { $0.webcamHides.removeAll { $0.id == id } }
         case .audio(let id):
             perform("Remove Audio", undoManager: undoManager) { $0.importedAudio.removeAll { $0.id == id } }
         }
@@ -592,6 +595,45 @@ final class EditorModel {
     // MARK: - Webcam
 
     /// The stretch of the recording the webcam covers, following the timeline as it's edited.
+    /// Whether the webcam bubble is on screen at the playhead, rather than hidden there.
+    var isWebcamShowing: Bool {
+        WebcamHide.visibility(at: timeMap.sourceTime(at: currentTime), hides: edits.webcamHides) > 0
+    }
+
+    /// Hides the webcam for three seconds from the playhead and selects that stretch.
+    func hideWebcam(undoManager: UndoManager?) {
+        let start = timeMap.sourceTime(at: currentTime)
+        let hide = WebcamHide(start: start, end: min(start + 3, sourceDuration))
+        guard hide.end - hide.start >= Self.minimumZoomLength else { return }
+        perform("Hide Camera", undoManager: undoManager) { $0.webcamHides.append(hide) }
+        selection = .webcamHide(hide.id)
+    }
+
+    /// Moves or resizes a stretch where the webcam is hidden during a drag, like a zoom.
+    func dragWebcamHide(_ id: UUID, _ edit: BlockEdit, by seconds: Double) {
+        beginGesture()
+        guard let original = gestureStart?.webcamHides.first(where: { $0.id == id }) else { return }
+        let map = timeMap
+        let limit = sourceDuration
+        func moved(_ time: Double) -> Double {
+            map.sourceTime(at: map.outputTime(at: time) + seconds)
+        }
+        update { edits in
+            guard let index = edits.webcamHides.firstIndex(where: { $0.id == id }) else { return }
+            switch edit {
+            case .move:
+                let length = original.end - original.start
+                let start = min(max(moved(original.start), 0), limit - length)
+                edits.webcamHides[index].start = start
+                edits.webcamHides[index].end = start + length
+            case .trimStart:
+                edits.webcamHides[index].start = min(max(moved(original.start), 0), original.end - Self.minimumZoomLength)
+            case .trimEnd:
+                edits.webcamHides[index].end = max(min(moved(original.end), limit), original.start + Self.minimumZoomLength)
+            }
+        }
+    }
+
     var webcamRange: ClosedRange<Double>? {
         guard let range = scene?.webcamRange else { return nil }
         let offset = edits.webcamOffset ?? range.lowerBound
@@ -745,6 +787,7 @@ final class EditorModel {
             firstFrame: firstFrame,
             notes: edits.notes,
             noteImages: images,
+            webcamHides: edits.webcamHides,
             backgroundImage: await currentBackgroundLayer(),
             timeMap: scene.timeMap
         )

@@ -20,12 +20,16 @@ struct BubbleOverlay: View {
         GeometryReader { geometry in
             let video = AVMakeRect(aspectRatio: canvasSize, insideRect: CGRect(origin: .zero, size: geometry.size))
             let scale = video.width / max(canvasSize.width, 1)
-            let diameter = settings.webcamDiameter(in: canvasSize) * scale
+            let size = settings.webcamFrameSize(in: canvasSize)
+            // Circular corners, like the rendered bubble, so a circle stays a circle.
+            let shape = RoundedRectangle(cornerRadius: settings.webcamCornerRadius(in: canvasSize) * scale, style: .circular)
             let center = settings.webcamCenter(in: canvasSize)
 
-            outline
-                .frame(width: diameter, height: diameter)
-                .contentShape(settings.webcamShape == .circle ? AnyShape(Circle()) : AnyShape(Rectangle()))
+            shape
+                .strokeBorder(Color.accentColor, lineWidth: 2)
+                .opacity(isHovering || dragStart != nil ? 1 : 0)
+                .frame(width: size.width * scale, height: size.height * scale)
+                .contentShape(shape)
                 .position(x: video.minX + center.x * scale, y: video.minY + center.y * scale)
                 .onHover { isHovering = $0 }
                 .gesture(
@@ -44,21 +48,5 @@ struct BubbleOverlay: View {
                 .accessibilityLabel("Webcam bubble")
                 .accessibilityHint("Drag to move it")
         }
-    }
-
-    @ViewBuilder
-    private var outline: some View {
-        let visible = isHovering || dragStart != nil
-        Group {
-            if settings.webcamShape == .circle {
-                Circle().strokeBorder(Color.accentColor, lineWidth: 2)
-            } else {
-                GeometryReader { geometry in
-                    RoundedRectangle(cornerRadius: geometry.size.width * 0.18, style: .continuous)
-                        .strokeBorder(Color.accentColor, lineWidth: 2)
-                }
-            }
-        }
-        .opacity(visible ? 1 : 0)
     }
 }

@@ -34,10 +34,9 @@ struct Recording: Identifiable, Hashable {
 final class RecordingLibrary {
     private(set) var recordings: [Recording] = []
 
-    /// Projects are saved straight into `~/Downloads`. Inside the sandbox the Downloads folder
-    /// is a link to the real one, so resolve it.
+    /// Where projects are saved: Downloads, or the folder picked in Settings.
     static var folder: URL {
-        URL.downloadsDirectory.resolvingSymlinksInPath()
+        ProjectFolder.shared.url
     }
 
     /// A new, not yet created project named after the current time, e.g. `Scope 2026-10-09 at 20.45.12.scope`.

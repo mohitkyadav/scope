@@ -31,6 +31,28 @@ nonisolated struct Note: Identifiable, Codable, Equatable, Sendable {
     var end: Double { start + duration }
 }
 
+/// A stretch of the recording where the webcam bubble is hidden. It shrinks and fades out from
+/// `start` and is back by `end`. Times are seconds in the recording, like zooms.
+nonisolated struct WebcamHide: Identifiable, Codable, Equatable, Sendable {
+    var id = UUID()
+    var start: Double
+    var end: Double
+
+    /// How long the bubble takes to go and come back.
+    static let fade = 0.3
+
+    /// How much of the bubble shows at `time`, from 0 (hidden) to 1, easing out and back in.
+    static func visibility(at time: Double, hides: [WebcamHide]) -> Double {
+        var visibility = 1.0
+        for hide in hides where time > hide.start && time < hide.end {
+            let fade = min(Self.fade, (hide.end - hide.start) / 2)
+            let progress = min((time - hide.start) / fade, (hide.end - time) / fade, 1)
+            visibility = min(visibility, 1 - progress * progress * (3 - 2 * progress))
+        }
+        return visibility
+    }
+}
+
 /// Volume for one of the recording's own audio tracks (system audio or microphone).
 nonisolated struct TrackMix: Codable, Equatable, Sendable {
     var volume = 1.0
@@ -57,6 +79,8 @@ nonisolated struct TimelineEdits: Codable, Equatable, Sendable {
     /// Times are seconds in the recording.
     var zooms: [ZoomSegment] = []
     var notes: [Note] = []
+    /// Where the webcam bubble is hidden. Times are seconds in the recording.
+    var webcamHides: [WebcamHide] = []
     /// One per audio track in the recording, in track order.
     var recordedAudio: [TrackMix] = []
     var importedAudio: [AudioClip] = []
@@ -74,7 +98,7 @@ nonisolated struct TimelineEdits: Codable, Equatable, Sendable {
     }
 
     private enum CodingKeys: String, CodingKey {
-        case clips, zooms, notes, recordedAudio, importedAudio, webcamFileName, webcamOffset
+        case clips, zooms, notes, webcamHides, recordedAudio, importedAudio, webcamFileName, webcamOffset
     }
 
     init(clips: [Clip] = [], zooms: [ZoomSegment] = []) {
@@ -88,6 +112,7 @@ nonisolated struct TimelineEdits: Codable, Equatable, Sendable {
         clips = (try? container.decodeIfPresent([Clip].self, forKey: .clips)) ?? []
         zooms = (try? container.decodeIfPresent([ZoomSegment].self, forKey: .zooms)) ?? []
         notes = (try? container.decodeIfPresent([Note].self, forKey: .notes)) ?? []
+        webcamHides = (try? container.decodeIfPresent([WebcamHide].self, forKey: .webcamHides)) ?? []
         recordedAudio = (try? container.decodeIfPresent([TrackMix].self, forKey: .recordedAudio)) ?? []
         importedAudio = (try? container.decodeIfPresent([AudioClip].self, forKey: .importedAudio)) ?? []
         webcamFileName = try? container.decodeIfPresent(String.self, forKey: .webcamFileName)

@@ -17,35 +17,23 @@
 
 ## Features
 
-**Record**
-- A whole display or a single window
-- Microphone, system audio and camera, each optional
-- Countdown before recording, and ⌘⇧2 to stop from any app
-- 30 or 60 fps
-- Every recording is a project in `~/Downloads` that you can keep editing
+| | |
+|---|---|
+| **Record** | Display or window · mic, system audio, camera · countdown · ⌘⇧2 to stop · 30/60 fps |
+| **Zoom** | Auto zoom on clicks · per-zoom level and transition · smoothed cursor · click ripples · motion blur |
+| **Style** | Gradient or image backgrounds · padding, corners, shadow · webcam bubble |
+| **Edit** | Split, delete, 0.25–4× speed · notes · per-track volume · music and voice-over · undo |
+| **Export** | MP4 at any size and quality · seamless looping GIFs |
 
-**Zoom and cursor**
-- Automatic zooms on your clicks that follow the cursor
-- Each zoom can have its own level and transition
-- A smoothed cursor, adjustable size and click ripples
-- Motion blur on zooms, pans and the cursor
+Every recording is a project you can reopen and keep editing, saved to Downloads or a folder you choose.
 
-**Style**
-- Gradient or image backgrounds, with blur for images
-- Images you've used are saved for every project
-- Padding, rounded corners, a shadow and background parallax
-- A webcam bubble: circle or rounded, any size, mirrored, drag to move
+## Private
 
-**Edit**
-- Timeline with split, delete and speed from 0.25× to 4×
-- On-screen notes
-- Volume and mute for each audio track, plus music or voice-over files
-- Bring in another video for the webcam bubble
-- Undo and redo, with autosave
+Scope never connects to the internet: no analytics, no tracking, no update checks. It runs in Apple's App Sandbox without network access, so it couldn't even if it tried. Check for yourself:
 
-**Export**
-- MP4 at the original size or smaller, 30 or 60 fps, with a choice of quality
-- Looping GIFs, with the cursor eased back to the start so the loop is seamless
+```sh
+codesign -d --entitlements - /Applications/Scope.app   # no network.client entitlement
+```
 
 ## Install
 
@@ -53,19 +41,17 @@
 brew install mohitkyadav/tap/scope
 ```
 
-Scope needs macOS 15 or later. Update with `brew upgrade scope`, and remove it with `brew uninstall scope` (add `--zap` to also remove its settings and saved background images). Your recordings in Downloads are never touched.
+Needs macOS 15+. Update with `brew upgrade scope`, remove with `brew uninstall --zap scope`. Recordings are never touched.
 
-Scope isn't notarized by Apple, so the Homebrew install clears the quarantine flag for you. If you download the zip from [Releases](https://github.com/mohitkyadav/scope/releases) instead, macOS will block the first launch: open System Settings → Privacy & Security and click **Open Anyway**.
+Downloading the zip from [Releases](https://github.com/mohitkyadav/scope/releases) instead? Scope isn't notarized, so allow it once in System Settings → Privacy & Security → **Open Anyway**.
 
 ## Permissions
 
-| Permission | Asked when | Needed for |
-|---|---|---|
-| Screen & System Audio Recording | You first record | Recording the screen and your Mac's sound (required) |
-| Microphone | You turn on the microphone | Voice-over |
-| Camera | You turn on the camera | The webcam bubble |
-
-After allowing screen recording, quit and reopen Scope. Permissions carry over when you update.
+| Permission | Needed for |
+|---|---|
+| Screen & System Audio Recording | Recording (required, reopen Scope after allowing) |
+| Microphone | Voice-over (optional) |
+| Camera | Webcam bubble (optional) |
 
 ## Build
 

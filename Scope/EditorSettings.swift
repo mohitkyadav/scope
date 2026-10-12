@@ -30,12 +30,23 @@ nonisolated struct EditorSettings: Equatable, Sendable {
     /// Centre of the bubble as fractions of the frame, from the top left.
     var webcamX = 0.88
     var webcamY = 0.82
-    /// Width of the bubble as a fraction of the frame's shorter side.
+    /// Width of a square bubble as a fraction of the frame's shorter side. Other shapes have the same area.
     var webcamSize = 0.22
     var webcamShape = BubbleShape.circle
+    var webcamBorder = BubbleBorder.white
+    /// The border's colour when `webcamBorder` is `.custom`.
+    var webcamBorderColor = RGB(red: 0.23, green: 0.51, blue: 0.96)
+    /// Thickness of the border as a fraction of the bubble's shorter side.
+    var webcamBorderWidth = 0.015
     var webcamShadow = true
     /// Flip the webcam like a mirror, which is how people expect to see themselves.
     var webcamMirrored = true
+    /// How far the bubble zooms into the camera, from 1 (the whole picture fills it) to 3.
+    var webcamZoom = 1.0
+    /// Which part of the zoomed camera shows, from -1 (left or top edge) to 1 (right or bottom edge),
+    /// as seen in the bubble, so mirroring doesn't swap left and right.
+    var webcamFocusX = 0.0
+    var webcamFocusY = 0.0
 
     /// What the recording sits on. With `.none` the video fills the frame and the settings below do nothing.
     var background = Background.none
@@ -52,19 +63,32 @@ nonisolated struct EditorSettings: Equatable, Sendable {
     /// as the recording). Less than the recording gives a sense of depth.
     var parallax = 0.0
 
-    /// The bubble's width in pixels on a frame of `canvas` size.
-    func webcamDiameter(in canvas: CGSize) -> CGFloat {
-        webcamSize * min(canvas.width, canvas.height)
+    /// The border's colour, or `nil` for no border.
+    var webcamBorderRGB: RGB? {
+        webcamBorder == .custom ? webcamBorderColor : webcamBorder.color
+    }
+
+    /// The bubble's size in pixels on a frame of `canvas` size.
+    func webcamFrameSize(in canvas: CGSize) -> CGSize {
+        let side = webcamSize * min(canvas.width, canvas.height)
+        let stretch = webcamShape.aspectRatio.squareRoot()
+        return CGSize(width: side * stretch, height: side / stretch)
+    }
+
+    /// The bubble's corner radius in pixels on a frame of `canvas` size.
+    func webcamCornerRadius(in canvas: CGSize) -> CGFloat {
+        let size = webcamFrameSize(in: canvas)
+        return min(size.width, size.height) * webcamShape.cornerRadius
     }
 
     /// The bubble's centre in pixels from the top left of a frame of `canvas` size, kept far enough
     /// from the edges that the whole bubble stays in the frame.
     func webcamCenter(in canvas: CGSize) -> CGPoint {
-        let radius = webcamDiameter(in: canvas) / 2
+        let size = webcamFrameSize(in: canvas)
         let margin = min(canvas.width, canvas.height) * 0.02
         return CGPoint(
-            x: min(max(webcamX * canvas.width, radius + margin), canvas.width - radius - margin),
-            y: min(max(webcamY * canvas.height, radius + margin), canvas.height - radius - margin)
+            x: min(max(webcamX * canvas.width, size.width / 2 + margin), canvas.width - size.width / 2 - margin),
+            y: min(max(webcamY * canvas.height, size.height / 2 + margin), canvas.height - size.height / 2 - margin)
         )
     }
 }
@@ -73,7 +97,8 @@ extension EditorSettings: Codable {
     private enum CodingKeys: String, CodingKey {
         case cursorSmoothing, cursorSize, showClicks
         case autoZoom, zoomLevel, zoomTransition, motionBlur
-        case webcamVisible, webcamX, webcamY, webcamSize, webcamShape, webcamShadow, webcamMirrored
+        case webcamVisible, webcamX, webcamY, webcamSize, webcamShape, webcamBorder, webcamBorderColor, webcamBorderWidth, webcamShadow, webcamMirrored
+        case webcamZoom, webcamFocusX, webcamFocusY
         case background, backgroundImageFileName, backgroundBlur, padding, cornerRadius, shadow, parallax
     }
 
@@ -98,8 +123,14 @@ extension EditorSettings: Codable {
         read(.webcamY, into: &webcamY)
         read(.webcamSize, into: &webcamSize)
         read(.webcamShape, into: &webcamShape)
+        read(.webcamBorder, into: &webcamBorder)
+        read(.webcamBorderColor, into: &webcamBorderColor)
+        read(.webcamBorderWidth, into: &webcamBorderWidth)
         read(.webcamShadow, into: &webcamShadow)
         read(.webcamMirrored, into: &webcamMirrored)
+        read(.webcamZoom, into: &webcamZoom)
+        read(.webcamFocusX, into: &webcamFocusX)
+        read(.webcamFocusY, into: &webcamFocusY)
         read(.background, into: &background)
         read(.backgroundImageFileName, into: &backgroundImageFileName)
         read(.backgroundBlur, into: &backgroundBlur)
@@ -110,10 +141,35 @@ extension EditorSettings: Codable {
     }
 }
 
-nonisolated struct RGB: Equatable, Sendable {
+nonisolated struct RGB: Equatable, Codable, Sendable {
     var red: Double
     var green: Double
     var blue: Double
+}
+
+extension RGB {
+    /// Reads "#3B82F6", "3b82f6" or the short "#38F".
+    nonisolated init?(hex: String) {
+        var digits = hex.trimmingCharacters(in: .whitespaces)
+        if digits.hasPrefix("#") {
+            digits.removeFirst()
+        }
+        if digits.count == 3 {
+            digits = digits.map { "\($0)\($0)" }.joined()
+        }
+        guard digits.count == 6, let value = UInt32(digits, radix: 16) else { return nil }
+        self.init(
+            red: Double((value >> 16) & 0xFF) / 255,
+            green: Double((value >> 8) & 0xFF) / 255,
+            blue: Double(value & 0xFF) / 255
+        )
+    }
+
+    /// "#3B82F6".
+    nonisolated var hex: String {
+        func byte(_ component: Double) -> Int { Int((min(max(component, 0), 1) * 255).rounded()) }
+        return String(format: "#%02X%02X%02X", byte(red), byte(green), byte(blue))
+    }
 }
 
 nonisolated enum Background: String, CaseIterable, Identifiable, Sendable {
@@ -170,7 +226,7 @@ extension Background: Codable {
 }
 
 nonisolated enum BubbleShape: String, CaseIterable, Identifiable, Codable, Sendable {
-    case circle, roundedSquare
+    case circle, roundedSquare, square, portrait, landscape
 
     var id: Self { self }
 
@@ -178,6 +234,66 @@ nonisolated enum BubbleShape: String, CaseIterable, Identifiable, Codable, Senda
         switch self {
         case .circle: "Circle"
         case .roundedSquare: "Rounded"
+        case .square: "Square"
+        case .portrait: "Portrait"
+        case .landscape: "Landscape"
+        }
+    }
+
+    var symbol: String {
+        switch self {
+        case .circle: "circle"
+        case .roundedSquare: "app"
+        case .square: "square"
+        case .portrait: "rectangle.portrait"
+        case .landscape: "rectangle"
+        }
+    }
+
+    /// Width divided by height.
+    var aspectRatio: Double {
+        switch self {
+        case .circle, .roundedSquare, .square: 1
+        case .portrait: 9.0 / 16
+        case .landscape: 16.0 / 9
+        }
+    }
+
+    /// Corner radius as a fraction of the shorter side.
+    var cornerRadius: Double {
+        switch self {
+        case .circle: 0.5
+        case .roundedSquare, .portrait, .landscape: 0.18
+        case .square: 0
+        }
+    }
+}
+
+nonisolated enum BubbleBorder: String, CaseIterable, Identifiable, Codable, Sendable {
+    case none, white, black, red, custom
+
+    var id: Self { self }
+    /// The ready-made choices, offered as swatches.
+    static let presets: [BubbleBorder] = [.none, .white, .black, .red]
+
+    var name: String {
+        switch self {
+        case .none: "None"
+        case .white: "White"
+        case .black: "Black"
+        case .red: "Red"
+        case .custom: "Custom"
+        }
+    }
+
+    /// `nil` for no border, and for a custom one, whose colour is in the settings.
+    var color: RGB? {
+        switch self {
+        case .none, .custom: nil
+        case .white: RGB(red: 1, green: 1, blue: 1)
+        case .black: RGB(red: 0, green: 0, blue: 0)
+        // Scope's accent.
+        case .red: RGB(red: 0.91, green: 0.28, blue: 0.24)
         }
     }
 }

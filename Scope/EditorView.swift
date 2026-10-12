@@ -103,7 +103,7 @@ struct EditorView: View {
             PlayerView(player: model.player)
                 .aspectRatio(model.canvasSize.width > 0 ? model.canvasSize : CGSize(width: 16, height: 9), contentMode: .fit)
                 .overlay {
-                    if model.hasWebcam, model.settings.webcamVisible {
+                    if model.hasWebcam, model.settings.webcamVisible, model.isWebcamShowing {
                         BubbleOverlay(settings: $model.settings, canvasSize: model.canvasSize)
                     }
                 }
@@ -154,7 +154,8 @@ struct EditorView: View {
                 if !isEditing {
                     model.endGesture("Edit Note", undoManager: undoManager)
                 }
-            }
+            },
+            onHexEditingChanged: { model.isEditingText = $0 }
         )
     }
 

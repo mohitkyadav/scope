@@ -204,7 +204,7 @@ struct ExportSheet: View {
             }
         case .finished(let url):
             HStack {
-                Label("Saved “\(url.lastPathComponent)” to Downloads", systemImage: "checkmark.circle.fill")
+                Label("Saved “\(url.lastPathComponent)” to \(FileManager.default.displayName(atPath: url.deletingLastPathComponent().path))", systemImage: "checkmark.circle.fill")
                     .foregroundStyle(.green)
                 Spacer()
                 Button("Show in Finder") {

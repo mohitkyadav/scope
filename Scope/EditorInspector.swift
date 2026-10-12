@@ -10,6 +10,7 @@ enum InspectorTab: String, CaseIterable, Identifiable {
     case style = "Style"
     case zoom = "Zoom"
     case cursor = "Cursor"
+    case camera = "Camera"
 
     var id: Self { self }
 }
@@ -35,8 +36,13 @@ struct EditorInspector: View {
     /// The selected note's text, if a note is selected.
     var noteText: Binding<String>?
     var onNoteEditingChanged: (Bool) -> Void = { _ in }
+    /// Called when the border's hex field gains or loses focus, so typing in it doesn't trigger shortcuts.
+    var onHexEditingChanged: (Bool) -> Void = { _ in }
 
     @FocusState private var isEditingNote: Bool
+    @FocusState private var isEditingHex: Bool
+    /// The hex field's text while it's typed in.
+    @State private var hexText = ""
 
     var body: some View {
         Form {
@@ -56,7 +62,6 @@ struct EditorInspector: View {
             switch tab {
             case .style:
                 backgroundSection
-                cameraSection
             case .zoom:
                 if let zoom = selectedZoom {
                     selectedZoomSection(zoom)
@@ -65,6 +70,12 @@ struct EditorInspector: View {
                 motionSection
             case .cursor:
                 cursorSection
+            case .camera:
+                cameraSection
+                if hasWebcam, settings.webcamVisible {
+                    framingSection
+                    borderSection
+                }
             }
         }
         .formStyle(.grouped)
@@ -118,7 +129,8 @@ struct EditorInspector: View {
                 }
             }
 
-            Group {
+            // Without a background the recording fills the frame, so these would do nothing.
+            if settings.background != .none {
                 LabeledSlider("Padding", value: $settings.padding, in: 0...0.2) {
                     "\(Int(($0 * 100).rounded()))%"
                 }
@@ -131,7 +143,6 @@ struct EditorInspector: View {
                 }
                 .help("How much the background zooms along with the recording")
             }
-            .disabled(settings.background == .none)
         }
     }
 
@@ -142,15 +153,21 @@ struct EditorInspector: View {
             if hasWebcam {
                 Toggle("Overlay", isOn: $settings.webcamVisible)
                 if settings.webcamVisible {
-                    LabeledSlider("Size", value: $settings.webcamSize, in: 0.1...0.45) {
-                        "\(Int(($0 * 100).rounded()))%"
-                    }
                     Picker("Shape", selection: $settings.webcamShape) {
                         ForEach(BubbleShape.allCases) { shape in
-                            Text(shape.name).tag(shape)
+                            Label(shape.name, systemImage: shape.symbol)
+                                .labelStyle(.iconOnly)
+                                .help(shape.name)
+                                .tag(shape)
                         }
                     }
                     .pickerStyle(.segmented)
+                    LabeledSlider("Size", value: $settings.webcamSize, in: 0.1...0.45) {
+                        "\(Int(($0 * 100).rounded()))%"
+                    }
+                    LabeledContent("Position") {
+                        CornerPicker(x: $settings.webcamX, y: $settings.webcamY)
+                    }
                     Toggle("Shadow", isOn: $settings.webcamShadow)
                     Toggle("Mirror", isOn: $settings.webcamMirrored)
                 }
@@ -161,8 +178,114 @@ struct EditorInspector: View {
             Text("Camera")
         } footer: {
             if hasWebcam, settings.webcamVisible {
-                Text("Drag the camera in the preview to move it.")
+                Text("Drag the camera in the preview to move it anywhere.")
                     .foregroundStyle(.secondary)
+            } else if !hasWebcam {
+                Text("Turn on the camera before recording to add yourself to the video.")
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    /// Which part of the camera shows in the bubble.
+    private var framingSection: some View {
+        Section {
+            LabeledSlider("Zoom", value: $settings.webcamZoom, in: 1...3) {
+                String(format: "%.2g×", $0)
+            }
+            LabeledSlider("Horizontal", value: $settings.webcamFocusX, in: -1...1) {
+                Self.offset($0, back: "←", forward: "→")
+            }
+            LabeledSlider("Vertical", value: $settings.webcamFocusY, in: -1...1) {
+                Self.offset($0, back: "↑", forward: "↓")
+            }
+            LabeledContent("") {
+                Button("Reset") {
+                    settings.webcamZoom = 1
+                    settings.webcamFocusX = 0
+                    settings.webcamFocusY = 0
+                }
+                .disabled(settings.webcamZoom == 1 && settings.webcamFocusX == 0 && settings.webcamFocusY == 0)
+            }
+        } header: {
+            Text("Framing")
+        } footer: {
+            Text("Zoom in so your face fills the bubble, then move to the part of the camera to show.")
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    /// The border's colour for the colour picker. Picking one makes the border custom.
+    private var customBorderColor: Binding<Color> {
+        Binding(
+            get: { Color(settings.webcamBorderRGB ?? settings.webcamBorderColor) },
+            set: { color in
+                guard let srgb = NSColor(color).usingColorSpace(.sRGB) else { return }
+                settings.webcamBorderColor = RGB(red: srgb.redComponent, green: srgb.greenComponent, blue: srgb.blueComponent)
+                settings.webcamBorder = .custom
+            }
+        )
+    }
+
+    /// Uses the typed hex colour, or puts back the current one if it isn't a colour.
+    private func applyHex() {
+        guard let color = RGB(hex: hexText) else {
+            hexText = settings.webcamBorderRGB?.hex ?? ""
+            return
+        }
+        hexText = color.hex
+        guard color != settings.webcamBorderRGB else { return }
+        settings.webcamBorderColor = color
+        settings.webcamBorder = .custom
+    }
+
+    /// "Centre", "← 40%" or "40% →".
+    private static func offset(_ value: Double, back: String, forward: String) -> String {
+        let percent = Int((abs(value) * 100).rounded())
+        if percent == 0 { return "Centre" }
+        return value < 0 ? "\(back) \(percent)%" : "\(percent)% \(forward)"
+    }
+
+    private var borderSection: some View {
+        Section("Border") {
+            LabeledContent("Colour") {
+                HStack(spacing: 8) {
+                    ForEach(BubbleBorder.presets) { border in
+                        BorderSwatch(border: border, isSelected: settings.webcamBorder == border) {
+                            settings.webcamBorder = border
+                        }
+                    }
+                    ColorPicker("Custom", selection: customBorderColor, supportsOpacity: false)
+                        .labelsHidden()
+                        .help("Pick any colour")
+                }
+            }
+            if let color = settings.webcamBorderRGB {
+                LabeledContent("Hex") {
+                    TextField("Hex", text: $hexText, prompt: Text("#RRGGBB"))
+                        .labelsHidden()
+                        .monospaced()
+                        .multilineTextAlignment(.trailing)
+                        .frame(width: 90)
+                        .focused($isEditingHex)
+                        .onSubmit(applyHex)
+                }
+                .onChange(of: color, initial: true) {
+                    if !isEditingHex {
+                        hexText = color.hex
+                    }
+                }
+                .onChange(of: isEditingHex) {
+                    onHexEditingChanged(isEditingHex)
+                    if !isEditingHex {
+                        applyHex()
+                    }
+                }
+            }
+            if settings.webcamBorder != .none {
+                LabeledSlider("Thickness", value: $settings.webcamBorderWidth, in: 0.005...0.06) {
+                    "\(Int(($0 * 100).rounded(.up)))%"
+                }
             }
         }
     }
@@ -350,6 +473,94 @@ private struct Swatch<Content: View>: View {
         .buttonStyle(.plain)
         .help(name)
         .accessibilityLabel(name)
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
+    }
+}
+
+/// Four buttons that put the camera in a corner. The one in use is highlighted.
+private struct CornerPicker: View {
+    @Binding var x: Double
+    @Binding var y: Double
+
+    private struct Corner: Identifiable {
+        let name: String
+        let x: Double
+        let y: Double
+        let alignment: Alignment
+        var id: String { name }
+    }
+
+    private let corners = [
+        Corner(name: "Top left", x: 0, y: 0, alignment: .topLeading),
+        Corner(name: "Top right", x: 1, y: 0, alignment: .topTrailing),
+        Corner(name: "Bottom left", x: 0, y: 1, alignment: .bottomLeading),
+        Corner(name: "Bottom right", x: 1, y: 1, alignment: .bottomTrailing),
+    ]
+
+    var body: some View {
+        HStack(spacing: 6) {
+            ForEach(corners) { corner in
+                let isSelected = x == corner.x && y == corner.y
+                Button {
+                    x = corner.x
+                    y = corner.y
+                } label: {
+                    RoundedRectangle(cornerRadius: 3)
+                        .strokeBorder(isSelected ? Color.accentColor : .secondary, lineWidth: 1.5)
+                        .overlay(alignment: corner.alignment) {
+                            Circle()
+                                .fill(isSelected ? Color.accentColor : .secondary)
+                                .frame(width: 6, height: 6)
+                                .padding(3)
+                        }
+                        .frame(width: 26, height: 18)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .help(corner.name)
+                .accessibilityLabel(corner.name)
+                .accessibilityAddTraits(isSelected ? .isSelected : [])
+            }
+        }
+    }
+}
+
+/// A round swatch for a border colour, crossed out for no border.
+private struct BorderSwatch: View {
+    let border: BubbleBorder
+    let isSelected: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Group {
+                if let color = border.color {
+                    Circle().fill(Color(color))
+                } else {
+                    Circle()
+                        .fill(.background)
+                        .overlay {
+                            Rectangle()
+                                .fill(.secondary)
+                                .frame(width: 1.5)
+                                .rotationEffect(.degrees(45))
+                        }
+                        .clipShape(Circle())
+                }
+            }
+            .overlay(Circle().strokeBorder(Color.primary.opacity(0.2)))
+            .frame(width: 18, height: 18)
+            .padding(3)
+            .overlay {
+                if isSelected {
+                    Circle().strokeBorder(Color.accentColor, lineWidth: 2)
+                }
+            }
+            .contentShape(Circle())
+        }
+        .buttonStyle(.plain)
+        .help(border.name)
+        .accessibilityLabel(border.name)
         .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 }

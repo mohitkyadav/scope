@@ -28,6 +28,8 @@ nonisolated struct FrameRenderer: @unchecked Sendable {
     let notes: [Note]
     /// Each note drawn as a pill, by `Note.id`.
     let noteImages: [UUID: CIImage]
+    /// Where the webcam bubble is hidden.
+    let webcamHides: [WebcamHide]
     /// The image background, already scaled to fill the frame and blurred, if one is chosen.
     var backgroundImage: CIImage?
     /// Converts the final video's time to the recording's, which the cursor, clicks and zooms use.
@@ -48,7 +50,8 @@ nonisolated struct FrameRenderer: @unchecked Sendable {
         let source = source.flatMap { $0.extent.isInfinite ? nil : $0 } ?? firstFrame ?? CIImage(color: .black)
 
         var canvas = blurredScene(source, at: outputTime)
-        if settings.webcamVisible, let webcam, let bubble = bubble(webcam) {
+        let webcamVisibility = WebcamHide.visibility(at: time, hides: webcamHides)
+        if settings.webcamVisible, webcamVisibility > 0, let webcam, let bubble = bubble(webcam, visibility: webcamVisibility) {
             canvas = bubble.composited(over: canvas)
         }
         for note in notes {
@@ -178,37 +181,55 @@ nonisolated struct FrameRenderer: @unchecked Sendable {
         )
     }
 
-    /// The webcam as a round (or rounded square) bubble with a thin rim and a soft shadow. It sits on
-    /// the finished frame, so it isn't zoomed and stays where it's placed.
-    private func bubble(_ webcam: CIImage) -> CIImage? {
+    /// The webcam in its bubble, with a border and a soft shadow. It sits on the finished frame, so it
+    /// isn't zoomed and stays where it's placed. Below a `visibility` of 1 it's shrinking and fading away.
+    private func bubble(_ webcam: CIImage, visibility: Double) -> CIImage? {
         let extent = webcam.extent
         guard !extent.isInfinite, extent.width > 0, extent.height > 0 else { return nil }
 
-        let diameter = settings.webcamDiameter(in: canvasSize)
+        let size = settings.webcamFrameSize(in: canvasSize)
         // Settings measure from the top left; Core Image from the bottom left.
         let topLeftCenter = settings.webcamCenter(in: canvasSize)
         let center = CGPoint(x: topLeftCenter.x, y: canvasSize.height - topLeftCenter.y)
-        let rect = CGRect(x: center.x - diameter / 2, y: center.y - diameter / 2, width: diameter, height: diameter)
-        let radius = settings.webcamShape == .circle ? diameter / 2 : diameter * 0.18
+        let rect = CGRect(x: center.x - size.width / 2, y: center.y - size.height / 2, width: size.width, height: size.height)
+        let radius = settings.webcamCornerRadius(in: canvasSize)
+        let shorterSide = min(size.width, size.height)
 
-        // Fill the bubble with the middle of the camera image, mirrored like a camera preview unless turned off.
-        let scale = diameter / min(extent.width, extent.height)
+        // Fill the bubble with the camera, zoomed in and moved to the chosen part of it, and mirrored
+        // like a camera preview unless turned off. The camera can move as far as it overhangs the bubble.
+        let scale = max(size.width / extent.width, size.height / extent.height) * max(settings.webcamZoom, 1)
+        let overhang = CGSize(width: (extent.width * scale - size.width) / 2, height: (extent.height * scale - size.height) / 2)
+        let offset = CGPoint(x: -settings.webcamFocusX * overhang.width, y: settings.webcamFocusY * overhang.height)
         let camera = webcam.transformed(by: CGAffineTransform(translationX: -extent.midX, y: -extent.midY)
             .concatenating(CGAffineTransform(scaleX: settings.webcamMirrored ? -scale : scale, y: scale))
-            .concatenating(CGAffineTransform(translationX: center.x, y: center.y)))
-        let face = camera.applyingFilter("CIBlendWithMask", parameters: [
+            .concatenating(CGAffineTransform(translationX: center.x + offset.x, y: center.y + offset.y)))
+        var bubble = camera.applyingFilter("CIBlendWithMask", parameters: [
             kCIInputBackgroundImageKey: CIImage.empty(),
             kCIInputMaskImageKey: roundedRectangle(rect, radius: radius, color: .white),
         ])
 
-        let rimWidth = max(diameter * 0.015, 2)
-        let rim = roundedRectangle(rect.insetBy(dx: -rimWidth, dy: -rimWidth), radius: radius + rimWidth, color: CIColor(red: 1, green: 1, blue: 1, alpha: 0.85))
-        let bubble = face.composited(over: rim)
-        guard settings.webcamShadow else { return bubble }
+        if let color = settings.webcamBorderRGB {
+            let width = max(shorterSide * settings.webcamBorderWidth, 1)
+            // White is a little see-through so it doesn't glare.
+            let alpha = settings.webcamBorder == .white ? 0.85 : 1
+            let border = roundedRectangle(
+                rect.insetBy(dx: -width, dy: -width),
+                radius: radius > 0 ? radius + width : 0,
+                color: CIColor(red: color.red, green: color.green, blue: color.blue, alpha: alpha)
+            )
+            bubble = bubble.composited(over: border)
+        }
+        if settings.webcamShadow {
+            let shadow = roundedRectangle(rect.offsetBy(dx: 0, dy: -shorterSide * 0.03), radius: radius, color: CIColor(red: 0, green: 0, blue: 0, alpha: 0.4))
+                .applyingGaussianBlur(sigma: shorterSide * 0.05)
+            bubble = bubble.composited(over: shadow)
+        }
+        guard visibility < 1 else { return bubble }
 
-        let shadow = roundedRectangle(rect.offsetBy(dx: 0, dy: -diameter * 0.03), radius: radius, color: CIColor(red: 0, green: 0, blue: 0, alpha: 0.4))
-            .applyingGaussianBlur(sigma: diameter * 0.05)
-        return bubble.composited(over: shadow)
+        // Shrink a little while fading, so it eases away rather than blinking off.
+        return bubble
+            .transformed(by: Self.scale(around: center, by: 0.8 + 0.2 * visibility))
+            .applyingFilter("CIColorMatrix", parameters: ["inputAVector": CIVector(x: 0, y: 0, z: 0, w: visibility)])
     }
 
     /// How far zoomed in the view is at `time`, from 0 to 1.

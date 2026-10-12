@@ -19,6 +19,7 @@ struct ContentView: View {
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.openWindow) private var openWindow
     private let opener = ProjectOpener.shared
+    private let projectFolder = ProjectFolder.shared
 
     var body: some View {
         VStack(spacing: 0) {
@@ -68,6 +69,7 @@ struct ContentView: View {
         .onChange(of: scenePhase) {
             if scenePhase == .active {
                 permission.refresh()
+                projectFolder.refresh()
                 Task { await library.reload() }
                 // Windows come and go while Scope is in the background.
                 if permission.isGranted {
@@ -76,6 +78,9 @@ struct ContentView: View {
             }
         }
         .onChange(of: recorder.lastProject) {
+            Task { await library.reload() }
+        }
+        .onChange(of: projectFolder.url) {
             Task { await library.reload() }
         }
         .onChange(of: opener.pending, initial: true) {
