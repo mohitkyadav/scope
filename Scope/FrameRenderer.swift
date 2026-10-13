@@ -16,7 +16,8 @@ import CoreImage.CIFilterBuiltins
 nonisolated struct FrameRenderer: @unchecked Sendable {
     let videoSize: CGSize
     let cursorPath: CursorPath?
-    let sprite: CursorSprite?
+    /// How the cursor looks over the recording.
+    let sprites: CursorSprites?
     /// Video pixels per screen point at recording time, e.g. 2 on a Retina display.
     let pixelsPerPoint: CGFloat
     let settings: EditorSettings
@@ -374,7 +375,8 @@ nonisolated struct FrameRenderer: @unchecked Sendable {
     }
 
     private func cursorLayer(at time: Double, outputTime: Double) -> CIImage? {
-        guard let cursorPath, let sprite, var position = cursorPath.position(at: time) else { return nil }
+        guard let cursorPath, let sprites, var position = cursorPath.position(at: time) else { return nil }
+        let sprite = settings.cursorShapes ? sprites.sprite(at: time) : sprites.arrow
         if let cursorLoop, let loopStart = cursorPath.position(at: timeMap?.sourceTime(at: cursorLoop.start) ?? cursorLoop.start) {
             position = cursorLoop.blend(position, toward: loopStart, at: outputTime)
         }

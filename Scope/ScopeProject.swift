@@ -22,6 +22,8 @@ nonisolated struct ScopeProject: Hashable, Sendable {
     var projectFileURL: URL { url.appending(path: "project.json") }
     /// Files copied into the project, like an image background.
     func fileURL(_ fileName: String) -> URL { url.appending(path: fileName) }
+    /// Images of the cursor's shapes, named after `CursorTrack.Shape.id`.
+    var cursorsFolderURL: URL { url.appending(path: "cursors", directoryHint: .isDirectory) }
     /// Imported audio files.
     var audioFolderURL: URL { url.appending(path: "audio", directoryHint: .isDirectory) }
 

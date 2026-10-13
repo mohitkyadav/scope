@@ -335,6 +335,8 @@ struct EditorInspector: View {
                 String(format: "%.1f×", $0)
             }
             Toggle("Show clicks", isOn: $settings.showClicks)
+            Toggle("Match cursor shape", isOn: $settings.cursorShapes)
+                .help("Show the hand over links, the text cursor over text and so on, as while recording")
         }
     }
 }

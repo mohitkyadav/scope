@@ -32,6 +32,7 @@ final class Recorder: NSObject {
     private var countdownTask: Task<Bool, Never>?
     private var stopHotKey: GlobalHotKey?
     private var cursorRecorder: CursorRecorder?
+    private var cursorShapeRecorder: CursorShapeRecorder?
     private var webcam: WebcamRecorder?
     /// `systemUptime` when capture started, and when the first video frame was written.
     private var captureStartTime: TimeInterval = 0
@@ -123,6 +124,8 @@ final class Recorder: NSObject {
         // Start following the cursor first, so its position is known when the first frame arrives.
         let cursorRecorder = CursorRecorder(area: area)
         cursorRecorder.start()
+        let cursorShapeRecorder = CursorShapeRecorder()
+        cursorShapeRecorder.start()
         captureStartTime = ProcessInfo.processInfo.systemUptime
         videoStartTime = nil
 
@@ -132,6 +135,7 @@ final class Recorder: NSObject {
             try await stream.startCapture()
         } catch {
             _ = cursorRecorder.stop(videoStart: captureStartTime)
+            _ = cursorShapeRecorder.stop(videoStart: captureStartTime)
             if let webcam {
                 Task.detached { await webcam.stop() }
             }
@@ -142,6 +146,7 @@ final class Recorder: NSObject {
         }
 
         self.cursorRecorder = cursorRecorder
+        self.cursorShapeRecorder = cursorShapeRecorder
         self.stream = stream
         self.recordingOutput = recordingOutput
         self.project = project
@@ -205,7 +210,21 @@ final class Recorder: NSObject {
 
         let videoStart = videoStartTime ?? captureStartTime
         if let cursorRecorder, let project {
-            let track = cursorRecorder.stop(videoStart: videoStart)
+            var track = cursorRecorder.stop(videoStart: videoStart)
+            if let shapes = cursorShapeRecorder?.stop(videoStart: videoStart) {
+                track.shapes = shapes.shapes
+                track.shapeChanges = shapes.changes
+                do {
+                    try FileManager.default.createDirectory(at: project.cursorsFolderURL, withIntermediateDirectories: true)
+                    for (id, png) in shapes.images {
+                        try png.write(to: project.cursorsFolderURL.appending(path: "\(id).png"))
+                    }
+                } catch {
+                    // Without its images the cursor is drawn as the arrow, which is how it used to be.
+                    track.shapes = nil
+                    track.shapeChanges = nil
+                }
+            }
             do {
                 try track.write(to: project.cursorURL)
             } catch {
@@ -213,6 +232,7 @@ final class Recorder: NSObject {
             }
         }
         cursorRecorder = nil
+        cursorShapeRecorder = nil
 
         timerTask?.cancel()
         timerTask = nil

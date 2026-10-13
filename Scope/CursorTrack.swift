@@ -31,6 +31,24 @@ nonisolated struct CursorTrack: Codable, Sendable {
         var button: Button
     }
 
+    /// A look the cursor had, like the arrow, a pointing hand or a text cursor. Its image is saved
+    /// in the project's `cursors` folder as `<id>.png`.
+    nonisolated struct Shape: Codable, Sendable {
+        var id: String
+        /// Size of the cursor in points.
+        var width: Double
+        var height: Double
+        /// The click point, in points from the top left.
+        var hotX: Double
+        var hotY: Double
+    }
+
+    /// When the cursor took on a shape.
+    nonisolated struct ShapeChange: Codable, Sendable {
+        var t: Double
+        var shape: String
+    }
+
     var version = 1
     /// Size of the recorded area in points when recording started.
     var areaWidth: Double
@@ -38,6 +56,10 @@ nonisolated struct CursorTrack: Codable, Sendable {
     /// One sample each time the cursor moved.
     var samples: [Sample]
     var clicks: [Click]
+    /// The cursor's shapes and when it changed between them. `nil` in projects recorded before
+    /// Scope followed the cursor's shape, which show the arrow throughout.
+    var shapes: [Shape]?
+    var shapeChanges: [ShapeChange]?
 
     static func read(from url: URL) throws -> CursorTrack {
         try JSONDecoder().decode(CursorTrack.self, from: Data(contentsOf: url))

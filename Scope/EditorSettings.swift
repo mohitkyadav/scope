@@ -15,6 +15,9 @@ nonisolated struct EditorSettings: Equatable, Sendable {
     var cursorSize = 1.5
     /// Show a ripple where each click happened.
     var showClicks = true
+    /// Change the cursor's shape as it did while recording, e.g. to a hand over links; otherwise
+    /// it's the arrow throughout.
+    var cursorShapes = true
 
     /// Zoom in on the zoom segments.
     var autoZoom = true
@@ -95,7 +98,7 @@ nonisolated struct EditorSettings: Equatable, Sendable {
 
 extension EditorSettings: Codable {
     private enum CodingKeys: String, CodingKey {
-        case cursorSmoothing, cursorSize, showClicks
+        case cursorSmoothing, cursorSize, showClicks, cursorShapes
         case autoZoom, zoomLevel, zoomTransition, motionBlur
         case webcamVisible, webcamX, webcamY, webcamSize, webcamShape, webcamBorder, webcamBorderColor, webcamBorderWidth, webcamShadow, webcamMirrored
         case webcamZoom, webcamFocusX, webcamFocusY
@@ -114,6 +117,7 @@ extension EditorSettings: Codable {
         read(.cursorSmoothing, into: &cursorSmoothing)
         read(.cursorSize, into: &cursorSize)
         read(.showClicks, into: &showClicks)
+        read(.cursorShapes, into: &cursorShapes)
         read(.autoZoom, into: &autoZoom)
         read(.zoomLevel, into: &zoomLevel)
         read(.zoomTransition, into: &zoomTransition)

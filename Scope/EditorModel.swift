@@ -89,7 +89,7 @@ final class EditorModel {
     /// The smoothing `cursorPath` was built with, so it's only rebuilt when that changes.
     private var cursorPathSmoothing: Double?
     private var pixelsPerPoint: CGFloat = 2
-    private var sprite: CursorSprite?
+    private var sprites: CursorSprites?
     private var firstFrame: CIImage?
     /// The image background scaled to fill the frame and blurred, and what it was made from.
     private var backgroundLayer: (image: CIImage, fileName: String, blur: Double)?
@@ -142,7 +142,13 @@ final class EditorModel {
             }
             cameraCursor = await Task.detached { CursorPath(track: track, smoothing: 0.5) }.value
         }
-        sprite = CursorSprite.arrow()
+        if let arrow = CursorSprite.arrow() {
+            var shapes: [String: CursorSprite] = [:]
+            for shape in cursorTrack?.shapes ?? [] {
+                shapes[shape.id] = CursorSprite.load(shape, from: project.cursorsFolderURL)
+            }
+            sprites = CursorSprites(arrow: arrow, shapes: shapes, changes: cursorTrack?.shapeChanges ?? [])
+        }
         firstFrame = await Self.firstFrame(of: screen)
 
         // A project that hasn't been edited yet has no project file: default settings, and the
@@ -811,7 +817,7 @@ final class EditorModel {
         let renderer = FrameRenderer(
             videoSize: videoSize,
             cursorPath: cursorPath,
-            sprite: sprite,
+            sprites: sprites,
             pixelsPerPoint: pixelsPerPoint,
             settings: settings,
             zoomSegments: edits.zooms,
