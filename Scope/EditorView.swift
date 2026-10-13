@@ -13,10 +13,16 @@ struct EditorView: View {
     @State private var tab = InspectorTab.style
     @State private var isExporting = false
     @State private var isChoosingBackground = false
+    @State private var isRenaming = false
+    @State private var newName = ""
+    @State private var renameError: String?
     @Environment(\.undoManager) private var undoManager
+    /// Called with the project's new place when it's renamed, so the window keeps track of it.
+    private let onMove: (URL) -> Void
 
-    init(project: ScopeProject) {
+    init(project: ScopeProject, onMove: @escaping (URL) -> Void = { _ in }) {
         _model = State(initialValue: EditorModel(project: project))
+        self.onMove = onMove
     }
 
     var body: some View {
@@ -63,7 +69,10 @@ struct EditorView: View {
                 }
         }
         .toolbar {
-            EditorTitleToolbarItem(title: title, subtitle: subtitle)
+            EditorTitleToolbarItem(title: title, subtitle: subtitle) {
+                newName = model.project.name
+                isRenaming = true
+            }
             TrailingSpace()
             ToolbarItem(placement: .primaryAction) {
                 UndoRedoButtons(undoManager: undoManager)
@@ -76,6 +85,27 @@ struct EditorView: View {
             if case .zoom = model.selection {
                 tab = .zoom
             }
+        }
+        .onChange(of: model.project.url) {
+            onMove(model.project.url)
+        }
+        .alert("Rename Project", isPresented: $isRenaming) {
+            TextField("Name", text: $newName)
+            Button("Rename") {
+                do {
+                    try model.rename(to: newName)
+                } catch {
+                    renameError = error.localizedDescription
+                }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("The project is renamed in Finder too.")
+        }
+        .alert("Couldn't Rename the Project", isPresented: Binding(get: { renameError != nil }, set: { if !$0 { renameError = nil } })) {
+            Button("OK") {}
+        } message: {
+            Text(renameError ?? "")
         }
         .sheet(isPresented: $isExporting) {
             ExportSheet(model: model)
@@ -159,19 +189,18 @@ struct EditorView: View {
         )
     }
 
-    /// "Today at 18:42", like the main window's list.
+    /// The project's name, or "Today at 18:42" if it hasn't been given one, like the main window's list.
     private var title: String {
-        guard let date = model.recordingDate else { return model.project.name }
-        let calendar = Calendar.current
-        let time = date.formatted(date: .omitted, time: .shortened)
-        if calendar.isDateInToday(date) { return "Today at \(time)" }
-        if calendar.isDateInYesterday(date) { return "Yesterday at \(time)" }
-        return "\(date.formatted(.dateTime.day().month(.wide))) at \(time)"
+        guard model.project.hasRecordedName, let date = model.recordingDate else { return model.project.name }
+        return date.recordingTitle
     }
 
-    /// "0:07 · 3840 × 2160 · Edited".
+    /// "0:07 · 3840 × 2160 · Edited", after when it was recorded if the title is a name.
     private var subtitle: String {
         var parts = [model.duration.clockString]
+        if !model.project.hasRecordedName, let date = model.recordingDate {
+            parts.insert(date.recordingTitle, at: 0)
+        }
         if model.canvasSize.width > 0 {
             parts.append("\(Int(model.canvasSize.width)) × \(Int(model.canvasSize.height))")
         }
@@ -184,6 +213,7 @@ struct EditorView: View {
 private struct EditorTitleToolbarItem: ToolbarContent {
     let title: String
     let subtitle: String
+    let rename: () -> Void
 
     var body: some ToolbarContent {
         if #available(macOS 26, *) {
@@ -195,15 +225,20 @@ private struct EditorTitleToolbarItem: ToolbarContent {
     }
 
     private var label: some View {
-        VStack(alignment: .leading, spacing: 1) {
-            Text(title)
-                .font(.headline)
-            Text(subtitle)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .monospacedDigit()
+        Button(action: rename) {
+            VStack(alignment: .leading, spacing: 1) {
+                Text(title)
+                    .font(.headline)
+                Text(subtitle)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .monospacedDigit()
+            }
+            .padding(.leading, 4)
+            .contentShape(Rectangle())
         }
-        .padding(.leading, 4)
+        .buttonStyle(.plain)
+        .help("Rename the project")
     }
 }
 

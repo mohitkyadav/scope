@@ -23,7 +23,7 @@ struct ScopeApp: App {
 
         WindowGroup("Editor", id: EditorView.windowID, for: URL.self) { $projectURL in
             if let projectURL {
-                EditorView(project: ScopeProject(url: projectURL))
+                EditorView(project: ScopeProject(url: projectURL)) { $projectURL.wrappedValue = $0 }
             }
         }
         .defaultSize(width: 1200, height: 760)

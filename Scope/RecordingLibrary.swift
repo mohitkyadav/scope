@@ -20,13 +20,28 @@ struct Recording: Identifiable, Hashable {
     /// Whether it's been changed in the editor since it was recorded.
     var isEdited: Bool { lastEdited > date.addingTimeInterval(60) }
 
-    /// "Today at 18:54", "Yesterday at 22:01", or "9 October at 18:54".
+    /// The name it was given, or else when it was recorded, e.g. "Today at 18:54".
     var title: String {
-        let calendar = Calendar.current
-        let time = date.formatted(date: .omitted, time: .shortened)
-        if calendar.isDateInToday(date) { return "Today at \(time)" }
-        if calendar.isDateInYesterday(date) { return "Yesterday at \(time)" }
-        return "\(date.formatted(.dateTime.day().month(.wide))) at \(time)"
+        project.hasRecordedName ? date.recordingTitle : project.name
+    }
+}
+
+extension Notification.Name {
+    /// Posted with the project's URL as the object just before it's renamed, so an open editor can save first.
+    static let projectWillRename = Notification.Name("ScopeProjectWillRename")
+    /// Posted with the old URL as the object and the new one under `"url"` once a project is renamed.
+    static let projectDidRename = Notification.Name("ScopeProjectDidRename")
+}
+
+enum RenameError: LocalizedError {
+    case emptyName
+    case nameTaken(String)
+
+    var errorDescription: String? {
+        switch self {
+        case .emptyName: "Type a name for the project."
+        case .nameTaken(let name): "There's already a project called “\(name)” in that folder."
+        }
     }
 }
 
@@ -84,6 +99,38 @@ final class RecordingLibrary {
             RecentProjects.shared.remove(url)
         }
         await reload()
+    }
+
+    /// Renames a project's package on disk, telling any editor that has it open, and returns it
+    /// at its new place.
+    static func rename(_ project: ScopeProject, to typed: String) throws -> ScopeProject {
+        guard let name = ScopeProject.fileName(from: typed) else { throw RenameError.emptyName }
+        let url = project.url.deletingLastPathComponent().appending(path: "\(name).\(ScopeProject.fileExtension)", directoryHint: .isDirectory)
+        guard url.lastPathComponent != project.url.lastPathComponent else { return project }
+
+        // Only a change of case can find itself here: the disk ignores case, so it's the same file.
+        let isSameFile = url.path.lowercased() == project.url.path.lowercased()
+        if !isSameFile, FileManager.default.fileExists(atPath: url.path) {
+            throw RenameError.nameTaken(name)
+        }
+
+        NotificationCenter.default.post(name: .projectWillRename, object: project.url)
+        if isSameFile {
+            // A change of case only: go through another name, or the move does nothing.
+            let step = url.deletingLastPathComponent().appending(path: UUID().uuidString, directoryHint: .isDirectory)
+            try FileManager.default.moveItem(at: project.url, to: step)
+            do {
+                try FileManager.default.moveItem(at: step, to: url)
+            } catch {
+                try? FileManager.default.moveItem(at: step, to: project.url)
+                throw error
+            }
+        } else {
+            try FileManager.default.moveItem(at: project.url, to: url)
+        }
+        RecentProjects.shared.replace(project.url, with: url)
+        NotificationCenter.default.post(name: .projectDidRename, object: project.url, userInfo: ["url": url])
+        return ScopeProject(url: url)
     }
 
     func showInFinder(_ urls: some Collection<URL>) {

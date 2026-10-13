@@ -61,6 +61,8 @@ struct ExportSheet: View {
     @Environment(\.dismiss) private var dismiss
 
     @State private var format = Format.movie
+    /// The exported file's name, without its extension. Starts as the project's name.
+    @State private var fileName = ""
     @State private var height = 0
     @State private var frameRate = 60
     @State private var quality = ExportQuality.high
@@ -87,6 +89,7 @@ struct ExportSheet: View {
             .labelsHidden()
 
             Form {
+                TextField("Name", text: $fileName, prompt: Text(model.project.name))
                 switch format {
                 case .movie: movieSettings
                 case .gif: gifSettings
@@ -180,6 +183,7 @@ struct ExportSheet: View {
     }
 
     private func setDefaults() {
+        fileName = model.project.name
         height = Int(canvas.height)
         // A whole short video, or five seconds from the playhead of a longer one.
         if duration <= 10 {
@@ -217,23 +221,33 @@ struct ExportSheet: View {
         }
     }
 
+    /// The typed name as a file name, without an extension typed along with it, e.g. "Demo.mp4".
+    private func exportName(fallback: String) -> String {
+        var name = fileName.trimmingCharacters(in: .whitespaces)
+        for fileExtension in [".mp4", ".gif"] where name.lowercased().hasSuffix(fileExtension) {
+            name.removeLast(fileExtension.count)
+        }
+        return ScopeProject.fileName(from: name) ?? fallback
+    }
+
     private func startExport() {
         Task {
             model.player.pause()
             guard let job = await model.exportJob() else { return }
             let folder = RecordingLibrary.folder
+            let name = exportName(fallback: job.name)
 
             switch format {
             case .movie:
                 let options = MovieOptions(size: Exporter.size(forHeight: height, canvas: canvas), frameRate: frameRate, quality: quality)
-                let url = Exporter.availableURL(in: folder, name: job.name, fileExtension: "mp4")
+                let url = Exporter.availableURL(in: folder, name: name, fileExtension: "mp4")
                 controller.start({ progress in
                     try await Exporter.exportMovie(job, options: options, to: url, progress: progress)
                 }, writingTo: url)
 
             case .gif:
                 let options = GIFOptions(start: gifStart, end: gifEnd, width: gifWidth, frameRate: gifFrameRate, loopsCursor: loopsCursor)
-                let url = Exporter.availableURL(in: folder, name: job.name, fileExtension: "gif")
+                let url = Exporter.availableURL(in: folder, name: name, fileExtension: "gif")
                 controller.start({ progress in
                     try await Exporter.exportGIF(job, options: options, to: url, progress: progress)
                 }, writingTo: url)

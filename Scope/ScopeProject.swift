@@ -27,6 +27,25 @@ nonisolated struct ScopeProject: Hashable, Sendable {
 
     var name: String { url.deletingPathExtension().lastPathComponent }
 
+    /// Whether it still has the name it was recorded with, e.g. `Scope 2026-10-09 at 20.45.12`,
+    /// rather than one it was given.
+    var hasRecordedName: Bool {
+        name.wholeMatch(of: /Scope \d{4}-\d{2}-\d{2} at \d{2}\.\d{2}\.\d{2}/) != nil
+    }
+
+    /// A typed name made safe for a file name: trimmed, with no slashes or colons, and no leading
+    /// dot that would hide the file. `nil` if nothing's left.
+    static func fileName(from typed: String) -> String? {
+        var name = typed
+            .replacingOccurrences(of: "/", with: "-")
+            .replacingOccurrences(of: ":", with: "-")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        while name.hasPrefix(".") {
+            name.removeFirst()
+        }
+        return name.isEmpty ? nil : name
+    }
+
     func createFolder() throws {
         try FileManager.default.createDirectory(at: url, withIntermediateDirectories: false)
     }

@@ -5,6 +5,17 @@
 
 import Foundation
 
+extension Date {
+    /// "Today at 18:54", "Yesterday at 22:01", or "9 October at 18:54".
+    var recordingTitle: String {
+        let calendar = Calendar.current
+        let time = formatted(date: .omitted, time: .shortened)
+        if calendar.isDateInToday(self) { return "Today at \(time)" }
+        if calendar.isDateInYesterday(self) { return "Yesterday at \(time)" }
+        return "\(formatted(.dateTime.day().month(.wide))) at \(time)"
+    }
+}
+
 extension TimeInterval {
     /// `0:42`, `12:05`, or `1:02:05` for an hour or more.
     var clockString: String {

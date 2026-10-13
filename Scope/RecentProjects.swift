@@ -33,6 +33,13 @@ final class RecentProjects {
         save()
     }
 
+    /// Keeps a renamed project in its place in the list.
+    func replace(_ old: URL, with new: URL) {
+        guard let index = urls.firstIndex(where: { $0.standardizedFileURL == old.standardizedFileURL }) else { return }
+        urls[index] = new
+        save()
+    }
+
     func remove(_ url: URL) {
         urls.removeAll { $0.standardizedFileURL == url.standardizedFileURL }
         save()

@@ -28,7 +28,8 @@ enum TimelineSelection: Equatable {
 /// Playback and editing state for one project open in the editor.
 @Observable
 final class EditorModel {
-    let project: ScopeProject
+    /// Changes when the project is renamed.
+    private(set) var project: ScopeProject
     let player = AVPlayer()
 
     /// Playback position in the final video.
@@ -105,6 +106,7 @@ final class EditorModel {
     private var timeObserver: Any?
     private var statusSubscription: AnyCancellable?
     private var terminationObserver: (any NSObjectProtocol)?
+    private var renameObservers: [any NSObjectProtocol] = []
 
     /// The timeline as it was when the current drag began, for undo.
     private var gestureStart: TimelineEdits?
@@ -183,6 +185,34 @@ final class EditorModel {
                 self?.saveNow()
             }
         }
+
+        // The project can be renamed from here or from the main window. Save before it moves,
+        // then play and save from its new place.
+        renameObservers = [
+            NotificationCenter.default.addObserver(forName: .projectWillRename, object: nil, queue: nil) { [weak self] note in
+                MainActor.assumeIsolated {
+                    guard let self, note.object as? URL == self.project.url else { return }
+                    self.saveNow()
+                }
+            },
+            NotificationCenter.default.addObserver(forName: .projectDidRename, object: nil, queue: nil) { [weak self] note in
+                MainActor.assumeIsolated {
+                    guard let self, note.object as? URL == self.project.url, let url = note.userInfo?["url"] as? URL else { return }
+                    self.moved(to: url)
+                }
+            },
+        ]
+    }
+
+    /// Renames the project's package. Throws if the name is empty or taken, or the file can't be moved.
+    func rename(to name: String) throws {
+        _ = try RecordingLibrary.rename(project, to: name)
+    }
+
+    private func moved(to url: URL) {
+        project = ScopeProject(url: url)
+        screen = AVURLAsset(url: project.videoURL)
+        scheduleRebuild()
     }
 
     func close() {
@@ -191,6 +221,8 @@ final class EditorModel {
             NotificationCenter.default.removeObserver(terminationObserver)
         }
         terminationObserver = nil
+        renameObservers.forEach(NotificationCenter.default.removeObserver)
+        renameObservers = []
         player.pause()
         if let timeObserver {
             player.removeTimeObserver(timeObserver)
