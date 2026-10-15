@@ -43,8 +43,11 @@ struct EditorView: View {
         .frame(minWidth: 760, minHeight: 640)
         .inspector(isPresented: .constant(model.errorMessage == nil)) {
             inspector
-                .inspectorColumnWidth(min: 300, ideal: 330, max: 420)
+                // A fixed width, so the panel doesn't grow wider the first time something changes in it.
+                .inspectorColumnWidth(330)
                 .toolbar {
+                    // Keeps the tabs and Export against the right edge.
+                    TrailingSpace()
                     ToolbarItem {
                         Picker("Settings", selection: $tab) {
                             ForEach(InspectorTab.allCases) { tab in
