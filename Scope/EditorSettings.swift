@@ -18,6 +18,8 @@ nonisolated struct EditorSettings: Equatable, Sendable {
     /// Change the cursor's shape as it did while recording, e.g. to a hand over links; otherwise
     /// it's the arrow throughout.
     var cursorShapes = true
+    /// Ease the cursor across cuts, from where it was before the cut, instead of letting it jump.
+    var cursorGlide = true
 
     /// Zoom in on the zoom segments.
     var autoZoom = true
@@ -60,7 +62,7 @@ nonisolated struct EditorSettings: Equatable, Sendable {
     /// Space around the recording, as a fraction of the frame's shorter side.
     var padding = 0.08
     /// Corner radius of the recording, in screen points.
-    var cornerRadius = 12.0
+    var cornerRadius = 18.0
     var shadow = true
     /// How much the background zooms along with the recording, from 0 (stays still) to 1 (as much
     /// as the recording). Less than the recording gives a sense of depth.
@@ -98,7 +100,7 @@ nonisolated struct EditorSettings: Equatable, Sendable {
 
 extension EditorSettings: Codable {
     private enum CodingKeys: String, CodingKey {
-        case cursorSmoothing, cursorSize, showClicks, cursorShapes
+        case cursorSmoothing, cursorSize, showClicks, cursorShapes, cursorGlide
         case autoZoom, zoomLevel, zoomTransition, motionBlur
         case webcamVisible, webcamX, webcamY, webcamSize, webcamShape, webcamBorder, webcamBorderColor, webcamBorderWidth, webcamShadow, webcamMirrored
         case webcamZoom, webcamFocusX, webcamFocusY
@@ -118,6 +120,7 @@ extension EditorSettings: Codable {
         read(.cursorSize, into: &cursorSize)
         read(.showClicks, into: &showClicks)
         read(.cursorShapes, into: &cursorShapes)
+        read(.cursorGlide, into: &cursorGlide)
         read(.autoZoom, into: &autoZoom)
         read(.zoomLevel, into: &zoomLevel)
         read(.zoomTransition, into: &zoomTransition)
@@ -177,7 +180,7 @@ extension RGB {
 }
 
 nonisolated enum Background: String, CaseIterable, Identifiable, Sendable {
-    case none, aurora, sunrise, lagoon, orchid, image
+    case none, aurora, sunrise, lagoon, orchid, sage, image
 
     var id: Self { self }
     /// Every background but an image, in the order they're offered.
@@ -190,18 +193,22 @@ nonisolated enum Background: String, CaseIterable, Identifiable, Sendable {
         case .sunrise: "Sunrise"
         case .lagoon: "Lagoon"
         case .orchid: "Orchid"
+        case .sage: "Sage"
         case .image: "Image"
         }
     }
 
-    /// Top-left and bottom-right colours of the gradient. An image uses Aurora until it has an image.
-    var colors: (RGB, RGB)? {
+    /// The gradient's colours from the top left to the bottom right, evenly spaced. An image uses
+    /// Aurora until it has an image.
+    var colors: [RGB]? {
         switch self {
         case .none: nil
-        case .aurora, .image: (RGB(red: 0.29, green: 0.22, blue: 0.78), RGB(red: 0.08, green: 0.71, blue: 0.74))
-        case .sunrise: (RGB(red: 0.98, green: 0.42, blue: 0.42), RGB(red: 0.99, green: 0.75, blue: 0.36))
-        case .lagoon: (RGB(red: 0.27, green: 0.58, blue: 0.98), RGB(red: 0.38, green: 0.89, blue: 0.74))
-        case .orchid: (RGB(red: 0.87, green: 0.31, blue: 0.72), RGB(red: 0.44, green: 0.31, blue: 0.95))
+        case .aurora, .image: [RGB(red: 0.29, green: 0.22, blue: 0.78), RGB(red: 0.08, green: 0.71, blue: 0.74)]
+        case .sunrise: [RGB(red: 0.98, green: 0.42, blue: 0.42), RGB(red: 0.99, green: 0.75, blue: 0.36)]
+        case .lagoon: [RGB(red: 0.27, green: 0.58, blue: 0.98), RGB(red: 0.38, green: 0.89, blue: 0.74)]
+        case .orchid: [RGB(red: 0.87, green: 0.31, blue: 0.72), RGB(red: 0.44, green: 0.31, blue: 0.95)]
+        // #DEDEDC, #DFE9D9, #E0E2C4.
+        case .sage: [RGB(red: 0.871, green: 0.871, blue: 0.863), RGB(red: 0.875, green: 0.914, blue: 0.851), RGB(red: 0.878, green: 0.886, blue: 0.769)]
         }
     }
 }

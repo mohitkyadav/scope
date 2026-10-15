@@ -92,8 +92,8 @@ struct EditorInspector: View {
                     Swatch(name: background.name, isSelected: settings.background == background) {
                         settings.background = background
                     } content: {
-                        if let (topLeft, bottomRight) = background.colors {
-                            LinearGradient(colors: [Color(topLeft), Color(bottomRight)], startPoint: .topLeading, endPoint: .bottomTrailing)
+                        if let colors = background.colors {
+                            LinearGradient(colors: colors.map { Color($0) }, startPoint: .topLeading, endPoint: .bottomTrailing)
                         } else {
                             Color.scopePill
                                 .overlay(Image(systemName: "nosign").font(.title3).foregroundStyle(.secondary))
@@ -337,6 +337,8 @@ struct EditorInspector: View {
             Toggle("Show clicks", isOn: $settings.showClicks)
             Toggle("Match cursor shape", isOn: $settings.cursorShapes)
                 .help("Show the hand over links, the text cursor over text and so on, as while recording")
+            Toggle("Glide across cuts", isOn: $settings.cursorGlide)
+                .help("Where part of the recording is cut out, move the cursor smoothly instead of letting it jump")
         }
     }
 }

@@ -314,7 +314,7 @@ nonisolated struct FrameRenderer: @unchecked Sendable {
     /// background itself grows only `parallax` as much as the window (by default not at all), which
     /// gives a sense of depth.
     private func placeOnBackground(_ video: CIImage, at time: Double) -> CIImage {
-        guard let (topLeft, bottomRight) = settings.background.colors else { return video }
+        guard let colors = settings.background.colors, !colors.isEmpty else { return video }
 
         let canvas = CGRect(origin: .zero, size: canvasSize)
         let shorterSide = min(canvas.width, canvas.height)
@@ -345,12 +345,7 @@ nonisolated struct FrameRenderer: @unchecked Sendable {
         if settings.background == .image, let backgroundImage {
             background = backgroundImage.clampedToExtent()
         } else {
-            let gradient = CIFilter.linearGradient()
-            gradient.point0 = CGPoint(x: canvas.minX, y: canvas.maxY)
-            gradient.point1 = CGPoint(x: canvas.maxX, y: canvas.minY)
-            gradient.color0 = CIColor(topLeft)
-            gradient.color1 = CIColor(bottomRight)
-            background = gradient.outputImage ?? CIImage(color: CIColor(topLeft))
+            background = Self.gradient(colors, from: CGPoint(x: canvas.minX, y: canvas.maxY), to: CGPoint(x: canvas.maxX, y: canvas.minY))
         }
 
         if let (anchor, windowScale) = zoomCamera(at: time, window: frame) {
@@ -359,6 +354,45 @@ nonisolated struct FrameRenderer: @unchecked Sendable {
         }
 
         return window.composited(over: background).cropped(to: canvas)
+    }
+
+    /// A linear gradient through `colors`, evenly spaced from `start` to `end`, that carries on past
+    /// both ends. It's made of one two-colour gradient per pair of neighbours, each taking over from
+    /// the last where they meet, so there's no seam.
+    private static func gradient(_ colors: [RGB], from start: CGPoint, to end: CGPoint) -> CIImage {
+        guard colors.count > 1 else { return CIImage(color: CIColor(colors.first ?? RGB(red: 0, green: 0, blue: 0))) }
+        func point(_ fraction: CGFloat) -> CGPoint {
+            CGPoint(x: start.x + (end.x - start.x) * fraction, y: start.y + (end.y - start.y) * fraction)
+        }
+        let length = max(hypot(end.x - start.x, end.y - start.y), 1)
+        let direction = CGPoint(x: (end.x - start.x) / length, y: (end.y - start.y) / length)
+
+        var result = CIImage.empty()
+        for index in 0..<(colors.count - 1) {
+            let from = point(CGFloat(index) / CGFloat(colors.count - 1))
+            let to = point(CGFloat(index + 1) / CGFloat(colors.count - 1))
+            let segment = CIFilter.linearGradient()
+            segment.point0 = from
+            segment.point1 = to
+            segment.color0 = CIColor(colors[index])
+            segment.color1 = CIColor(colors[index + 1])
+            guard let image = segment.outputImage else { continue }
+            if index == 0 {
+                result = image
+                continue
+            }
+            // Black before the point where this segment starts, white after it.
+            let step = CIFilter.linearGradient()
+            step.point0 = CGPoint(x: from.x - direction.x * 0.5, y: from.y - direction.y * 0.5)
+            step.point1 = CGPoint(x: from.x + direction.x * 0.5, y: from.y + direction.y * 0.5)
+            step.color0 = CIColor(red: 0, green: 0, blue: 0)
+            step.color1 = CIColor(red: 1, green: 1, blue: 1)
+            result = image.applyingFilter("CIBlendWithMask", parameters: [
+                kCIInputBackgroundImageKey: result,
+                kCIInputMaskImageKey: step.outputImage ?? CIImage.empty(),
+            ])
+        }
+        return result
     }
 
     /// Keeps `value` between two limits given in either order.
@@ -377,6 +411,9 @@ nonisolated struct FrameRenderer: @unchecked Sendable {
     private func cursorLayer(at time: Double, outputTime: Double) -> CIImage? {
         guard let cursorPath, let sprites, var position = cursorPath.position(at: time) else { return nil }
         let sprite = settings.cursorShapes ? sprites.sprite(at: time) : sprites.arrow
+        if settings.cursorGlide {
+            position = glideAcrossCut(position, cursorPath: cursorPath, at: outputTime)
+        }
         if let cursorLoop, let loopStart = cursorPath.position(at: timeMap?.sourceTime(at: cursorLoop.start) ?? cursorLoop.start) {
             position = cursorLoop.blend(position, toward: loopStart, at: outputTime)
         }
@@ -401,6 +438,31 @@ nonisolated struct FrameRenderer: @unchecked Sendable {
             CGAffineTransform(translationX: 0, y: -pixelsPerPoint)
         ))
         return cursor.composited(over: shadow)
+    }
+
+    /// The longest the cursor takes to glide across a cut, in seconds of the final video.
+    private static let glideDuration = 0.5
+
+    /// Just after a cut, where part of the recording was taken out, the cursor starts where it was
+    /// before the cut and eases over to where it really is, instead of jumping. It gets there before
+    /// the next click, so clicks still land where they happened.
+    private func glideAcrossCut(_ position: CGPoint, cursorPath: CursorPath, at outputTime: Double) -> CGPoint {
+        guard let timeMap, let index = timeMap.clipIndex(at: outputTime), index > 0 else { return position }
+        let clip = timeMap.clips[index]
+        let previous = timeMap.clips[index - 1]
+        // Clips that carry straight on, e.g. after a split, have no cut between them.
+        guard clip.start - previous.end > 0.01 else { return position }
+
+        let elapsed = outputTime - timeMap.outputStarts[index]
+        var duration = min(Self.glideDuration, clip.duration)
+        if let click = cursorPath.clicks.first(where: { $0.t >= clip.start && $0.t <= clip.end }) {
+            duration = min(duration, (click.t - clip.start) / clip.speed)
+        }
+        guard elapsed >= 0, elapsed < duration, let before = cursorPath.position(at: previous.end) else { return position }
+
+        let progress = elapsed / duration
+        let remaining = 1 - progress * progress * (3 - 2 * progress)
+        return CGPoint(x: position.x + (before.x - position.x) * remaining, y: position.y + (before.y - position.y) * remaining)
     }
 
     /// An expanding, fading ring for each click in the last half second.
