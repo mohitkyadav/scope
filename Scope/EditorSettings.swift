@@ -66,7 +66,8 @@ nonisolated struct EditorSettings: Equatable, Sendable {
     var padding = 0.08
     /// Corner radius of the recording, in screen points.
     var cornerRadius = 18.0
-    var shadow = true
+    /// How strong the recording's shadow is, from 0 (none) to 1. Half is a soft, natural shadow.
+    var shadowStrength = 0.5
     /// How much the background zooms along with the recording, from 0 (stays still) to 1 (as much
     /// as the recording). Less than the recording gives a sense of depth.
     var parallax = 0.0
@@ -108,7 +109,13 @@ extension EditorSettings: Codable {
         case webcamVisible, webcamX, webcamY, webcamSize, webcamShape, webcamBorder, webcamBorderColor, webcamBorderWidth, webcamShadow, webcamMirrored
         case webcamZoom, webcamFocusX, webcamFocusY
         case frameFormat
-        case background, backgroundImageFileName, backgroundBlur, padding, cornerRadius, shadow, parallax
+        case background, backgroundImageFileName, backgroundBlur, padding, cornerRadius, shadowStrength, parallax
+    }
+
+    /// Settings from older versions that are now stored differently.
+    private enum OldKeys: String, CodingKey {
+        /// On or off, before the shadow had a strength.
+        case shadow
     }
 
     /// Any setting missing from the file keeps its default, so projects saved by older versions still open.
@@ -148,7 +155,11 @@ extension EditorSettings: Codable {
         read(.backgroundBlur, into: &backgroundBlur)
         read(.padding, into: &padding)
         read(.cornerRadius, into: &cornerRadius)
-        read(.shadow, into: &shadow)
+        if let strength = try? container.decodeIfPresent(Double.self, forKey: .shadowStrength) {
+            shadowStrength = strength
+        } else if let old = try? decoder.container(keyedBy: OldKeys.self), let shadow = try? old.decodeIfPresent(Bool.self, forKey: .shadow) {
+            shadowStrength = shadow ? 0.5 : 0
+        }
         read(.parallax, into: &parallax)
     }
 }

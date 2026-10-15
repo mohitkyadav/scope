@@ -347,13 +347,15 @@ nonisolated struct FrameRenderer: @unchecked Sendable {
         ])
 
         var window = rounded
-        if settings.shadow {
+        if settings.shadowStrength > 0 {
+            // Stronger shadows are darker, softer and fall further below.
+            let strength = settings.shadowStrength
             let shadow = roundedRectangle(
-                frame.offsetBy(dx: 0, dy: -shorterSide * 0.01),
+                frame.offsetBy(dx: 0, dy: -shorterSide * 0.02 * strength),
                 radius: radius,
-                color: CIColor(red: 0, green: 0, blue: 0, alpha: 0.45)
+                color: CIColor(red: 0, green: 0, blue: 0, alpha: 0.9 * strength)
             )
-            .applyingGaussianBlur(sigma: shorterSide * 0.02)
+            .applyingGaussianBlur(sigma: shorterSide * 0.04 * strength)
             window = rounded.composited(over: shadow)
         }
 

@@ -161,7 +161,9 @@ struct EditorInspector: View {
                 LabeledSlider("Corners", value: $settings.cornerRadius, in: 0...40) {
                     "\(Int($0.rounded()))"
                 }
-                Toggle("Shadow", isOn: $settings.shadow)
+                LabeledSlider("Shadow", value: $settings.shadowStrength, in: 0...1) {
+                    $0 == 0 ? "Off" : "\(Int(($0 * 100).rounded()))%"
+                }
                 LabeledSlider("Parallax", value: $settings.parallax, in: 0...1) {
                     "\(Int(($0 * 100).rounded()))%"
                 }
