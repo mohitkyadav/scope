@@ -59,7 +59,7 @@ struct EditorView: View {
                             isExporting = true
                         } label: {
                             Label("Export", systemImage: "square.and.arrow.up")
-                                .labelStyle(.titleAndIcon)
+                                .labelStyle(.iconOnly)
                         }
                         .buttonStyle(.borderedProminent)
                         .keyboardShortcut("e")
