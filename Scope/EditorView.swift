@@ -43,8 +43,10 @@ struct EditorView: View {
         .frame(minWidth: 760, minHeight: 640)
         .inspector(isPresented: .constant(model.errorMessage == nil)) {
             inspector
-                // Wide enough from the start for the tabs and Export in the toolbar above it, which
-                // otherwise widen the panel the first time something changes in it.
+                // The panel's settings would otherwise ask for a width that changes with what they show,
+                // e.g. a slider's value as it's dragged, and the panel would keep resizing to match.
+                .frame(minWidth: 300, idealWidth: 370, maxWidth: .infinity)
+                // Wide enough for the tabs and Export in the toolbar above it.
                 .inspectorColumnWidth(min: 300, ideal: 370, max: 440)
                 .toolbar {
                     // Keeps the tabs and Export against the right edge.

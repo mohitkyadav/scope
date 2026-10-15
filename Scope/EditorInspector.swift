@@ -88,13 +88,14 @@ struct EditorInspector: View {
 
     private var formatSection: some View {
         Section {
+            // A menu rather than a segmented control: five segments are wider than the panel, and made it
+            // flicker between two widths.
             Picker("Format", selection: $settings.frameFormat) {
                 ForEach(FrameFormat.allCases) { format in
                     Text(format.name).tag(format)
                 }
             }
-            .pickerStyle(.segmented)
-            .labelsHidden()
+            .pickerStyle(.menu)
         } header: {
             Text("Format")
         } footer: {
