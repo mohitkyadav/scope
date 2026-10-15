@@ -69,7 +69,7 @@ final class EditorModel {
     /// Whether any edits have been saved for this project.
     private(set) var hasSavedEdits = false
     /// The size of the frames the renderer draws.
-    var canvasSize: CGSize { videoSize }
+    var canvasSize: CGSize { settings.frameFormat.canvasSize(for: videoSize) }
     var hasWebcam: Bool { scene?.webcamTrackID != nil }
     var recordedAudioNames: [String] { scene?.recordedAudio.map(\.name) ?? [] }
 
@@ -84,6 +84,8 @@ final class EditorModel {
     private var cursorPath: CursorPath?
     /// A lightly smoothed cursor path for the zoom camera, which follows it only inside zooms.
     private var cameraCursor: CursorPath?
+    /// A very smooth cursor path for framing a recording cropped to a different shape.
+    private var framingCursor: CursorPath?
     /// The zoom camera, and the zooms and zoom level it was worked out for.
     private var zoomCamera: (camera: ZoomCamera, zooms: [ZoomSegment], level: Double)?
     /// The smoothing `cursorPath` was built with, so it's only rebuilt when that changes.
@@ -92,11 +94,13 @@ final class EditorModel {
     private var sprites: CursorSprites?
     private var firstFrame: CIImage?
     /// The image background scaled to fill the frame and blurred, and what it was made from.
-    private var backgroundLayer: (image: CIImage, fileName: String, blur: Double)?
+    private var backgroundLayer: (image: CIImage, fileName: String, blur: Double, canvas: CGSize)?
     /// The background library image each of the project's background files is, by file name.
     private var backgroundImageIDs: [String: String] = [:]
     /// Notes drawn as images, by text, so they're only drawn again when their text changes.
     private(set) var noteImages: [String: CIImage] = [:]
+    /// The frame size the note images were drawn for; they're drawn again for a new frame format.
+    private var noteImagesCanvas = CGSize.zero
     /// The project's videos and audio lined up as the timeline says; what the player plays.
     private(set) var scene: ProjectComposition?
 
@@ -141,6 +145,7 @@ final class EditorModel {
                 pixelsPerPoint = videoSize.width / track.areaWidth
             }
             cameraCursor = await Task.detached { CursorPath(track: track, smoothing: 0.5) }.value
+            framingCursor = await Task.detached { CursorPath.steady(track: track) }.value
         }
         if let arrow = CursorSprite.arrow() {
             var shapes: [String: CursorSprite] = [:]
@@ -803,6 +808,10 @@ final class EditorModel {
             cursorPathSmoothing = smoothing
         }
 
+        if noteImagesCanvas != canvasSize {
+            noteImages = [:]
+            noteImagesCanvas = canvasSize
+        }
         var images: [UUID: CIImage] = [:]
         for note in edits.notes {
             if noteImages[note.text] == nil {
@@ -822,6 +831,7 @@ final class EditorModel {
             settings: settings,
             zoomSegments: edits.zooms,
             camera: currentZoomCamera(),
+            framingCursor: framingCursor,
             firstFrame: firstFrame,
             notes: edits.notes,
             noteImages: images,
@@ -883,14 +893,14 @@ final class EditorModel {
     private func currentBackgroundLayer() async -> CIImage? {
         guard settings.background == .image, let fileName = settings.backgroundImageFileName else { return nil }
         let blur = settings.backgroundBlur
-        if let backgroundLayer, backgroundLayer.fileName == fileName, backgroundLayer.blur == blur {
+        let canvas = canvasSize
+        if let backgroundLayer, backgroundLayer.fileName == fileName, backgroundLayer.blur == blur, backgroundLayer.canvas == canvas {
             return backgroundLayer.image
         }
         let url = project.fileURL(fileName)
-        let canvas = canvasSize
         let image = await Task.detached { Self.makeBackgroundLayer(url: url, canvas: canvas, blur: blur) }.value
         if let image {
-            backgroundLayer = (image, fileName, blur)
+            backgroundLayer = (image, fileName, blur, canvas)
         }
         return image
     }

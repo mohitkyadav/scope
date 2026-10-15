@@ -83,6 +83,14 @@ nonisolated enum Exporter {
         return CGSize(width: width, height: height)
     }
 
+    /// The size of a `canvas`-shaped video whose shorter side is `shorterSide`, e.g. 1080 × 1920 for 1080p 9:16.
+    static func size(forShorterSide shorterSide: Int, canvas: CGSize) -> CGSize {
+        guard canvas.height > canvas.width else { return size(forHeight: shorterSide, canvas: canvas) }
+        let width = Double(shorterSide - shorterSide % 2)
+        let height = (width * canvas.height / max(canvas.width, 1) / 2).rounded() * 2
+        return CGSize(width: width, height: height)
+    }
+
     /// `name.ext` in `folder`, or `name 2.ext`, `name 3.ext`… if it's taken.
     static func availableURL(in folder: URL, name: String, fileExtension: String) -> URL {
         var url = folder.appending(path: "\(name).\(fileExtension)")

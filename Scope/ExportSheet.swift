@@ -63,7 +63,8 @@ struct ExportSheet: View {
     @State private var format = Format.movie
     /// The exported file's name, without its extension. Starts as the project's name.
     @State private var fileName = ""
-    @State private var height = 0
+    /// The video's shorter side in pixels: its height, or its width for a tall video.
+    @State private var resolution = 0
     @State private var frameRate = 60
     @State private var quality = ExportQuality.high
     @State private var gifStart = 0.0
@@ -122,11 +123,11 @@ struct ExportSheet: View {
 
     @ViewBuilder
     private var movieSettings: some View {
-        Picker("Resolution", selection: $height) {
-            ForEach(heights, id: \.self) { height in
-                let size = Exporter.size(forHeight: height, canvas: canvas)
-                Text(height == heights.first ? "Original (\(Int(size.width)) × \(Int(size.height)))" : "\(height)p (\(Int(size.width)) × \(Int(size.height)))")
-                    .tag(height)
+        Picker("Resolution", selection: $resolution) {
+            ForEach(resolutions, id: \.self) { resolution in
+                let size = Exporter.size(forShorterSide: resolution, canvas: canvas)
+                Text(resolution == resolutions.first ? "Original (\(Int(size.width)) × \(Int(size.height)))" : "\(resolution)p (\(Int(size.width)) × \(Int(size.height)))")
+                    .tag(resolution)
             }
         }
         Picker("Frame rate", selection: $frameRate) {
@@ -170,21 +171,21 @@ struct ExportSheet: View {
         }
     }
 
-    /// The recording's own height, then common smaller ones.
-    private var heights: [Int] {
-        let original = Int(canvas.height)
+    /// The video's own size, then common smaller ones, measured along the shorter side like "1080p".
+    private var resolutions: [Int] {
+        let original = Int(min(canvas.width, canvas.height))
         return [original] + [2160, 1440, 1080, 720].filter { $0 < original }
     }
 
     private var estimatedMovieSize: String {
-        let options = MovieOptions(size: Exporter.size(forHeight: height, canvas: canvas), frameRate: frameRate, quality: quality)
+        let options = MovieOptions(size: Exporter.size(forShorterSide: resolution, canvas: canvas), frameRate: frameRate, quality: quality)
         let bytes = (Double(options.bitRate) + 192_000) * duration / 8
         return ByteCountFormatter.string(fromByteCount: Int64(bytes), countStyle: .file)
     }
 
     private func setDefaults() {
         fileName = model.project.name
-        height = Int(canvas.height)
+        resolution = Int(min(canvas.width, canvas.height))
         // A whole short video, or five seconds from the playhead of a longer one.
         if duration <= 10 {
             gifStart = 0
@@ -239,7 +240,7 @@ struct ExportSheet: View {
 
             switch format {
             case .movie:
-                let options = MovieOptions(size: Exporter.size(forHeight: height, canvas: canvas), frameRate: frameRate, quality: quality)
+                let options = MovieOptions(size: Exporter.size(forShorterSide: resolution, canvas: canvas), frameRate: frameRate, quality: quality)
                 let url = Exporter.availableURL(in: folder, name: name, fileExtension: "mp4")
                 controller.start({ progress in
                     try await Exporter.exportMovie(job, options: options, to: url, progress: progress)

@@ -19,6 +19,11 @@ nonisolated struct CursorPath: Sendable {
         self.init(track: track, sigma: smoothing * 0.2, anchoredToClicks: true)
     }
 
+    /// A very smooth path, for framing that follows the cursor without shaking along with it.
+    static func steady(track: CursorTrack) -> CursorPath {
+        CursorPath(track: track, sigma: 0.6, anchoredToClicks: false)
+    }
+
     /// `sigma` is the blur's width in seconds.
     private init(track: CursorTrack, sigma: Double, anchoredToClicks: Bool) {
         let raw = Self.resample(track)

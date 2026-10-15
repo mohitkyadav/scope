@@ -53,6 +53,9 @@ nonisolated struct EditorSettings: Equatable, Sendable {
     var webcamFocusX = 0.0
     var webcamFocusY = 0.0
 
+    /// The shape of the finished video, e.g. 9:16 for phones.
+    var frameFormat = FrameFormat.original
+
     /// What the recording sits on. With `.none` the video fills the frame and the settings below do nothing.
     var background = Background.none
     /// The image in the project used when `background` is `.image`.
@@ -104,6 +107,7 @@ extension EditorSettings: Codable {
         case autoZoom, zoomLevel, zoomTransition, motionBlur
         case webcamVisible, webcamX, webcamY, webcamSize, webcamShape, webcamBorder, webcamBorderColor, webcamBorderWidth, webcamShadow, webcamMirrored
         case webcamZoom, webcamFocusX, webcamFocusY
+        case frameFormat
         case background, backgroundImageFileName, backgroundBlur, padding, cornerRadius, shadow, parallax
     }
 
@@ -138,6 +142,7 @@ extension EditorSettings: Codable {
         read(.webcamZoom, into: &webcamZoom)
         read(.webcamFocusX, into: &webcamFocusX)
         read(.webcamFocusY, into: &webcamFocusY)
+        read(.frameFormat, into: &frameFormat)
         read(.background, into: &background)
         read(.backgroundImageFileName, into: &backgroundImageFileName)
         read(.backgroundBlur, into: &backgroundBlur)
@@ -306,5 +311,55 @@ nonisolated enum BubbleBorder: String, CaseIterable, Identifiable, Codable, Send
         // Scope's accent.
         case .red: RGB(red: 0.91, green: 0.28, blue: 0.24)
         }
+    }
+}
+
+/// The shape of the finished video.
+nonisolated enum FrameFormat: String, CaseIterable, Identifiable, Codable, Sendable {
+    case original, landscape, square, portrait, vertical
+
+    var id: Self { self }
+
+    var name: String {
+        switch self {
+        case .original: "Original"
+        case .landscape: "16:9"
+        case .square: "1:1"
+        case .portrait: "4:5"
+        case .vertical: "9:16"
+        }
+    }
+
+    /// What it's for, e.g. "Instagram posts".
+    var use: String {
+        switch self {
+        case .original: "The recording's own shape"
+        case .landscape: "YouTube, slides and websites"
+        case .square: "Posts that show the same everywhere"
+        case .portrait: "Instagram and LinkedIn posts"
+        case .vertical: "Shorts, Reels and TikTok"
+        }
+    }
+
+    /// Width divided by height, or `nil` for the recording's own shape.
+    var aspectRatio: Double? {
+        switch self {
+        case .original: nil
+        case .landscape: 16.0 / 9
+        case .square: 1
+        case .portrait: 4.0 / 5
+        case .vertical: 9.0 / 16
+        }
+    }
+
+    /// The finished video's size for a recording of `videoSize`: its shorter side matches the
+    /// recording's, so the recording keeps its detail. Even numbers, as video encoders need.
+    func canvasSize(for videoSize: CGSize) -> CGSize {
+        guard let ratio = aspectRatio, videoSize.width > 0, videoSize.height > 0 else { return videoSize }
+        let shorterSide = min(videoSize.width, videoSize.height)
+        func even(_ value: Double) -> CGFloat { CGFloat((value / 2).rounded() * 2) }
+        return ratio >= 1
+            ? CGSize(width: even(shorterSide * ratio), height: even(shorterSide))
+            : CGSize(width: even(shorterSide), height: even(shorterSide / ratio))
     }
 }

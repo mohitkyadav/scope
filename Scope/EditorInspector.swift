@@ -61,6 +61,7 @@ struct EditorInspector: View {
 
             switch tab {
             case .style:
+                formatSection
                 backgroundSection
             case .zoom:
                 if let zoom = selectedZoom {
@@ -82,6 +83,29 @@ struct EditorInspector: View {
         .scrollContentBackground(.hidden)
         .onChange(of: isEditingNote) {
             onNoteEditingChanged(isEditingNote)
+        }
+    }
+
+    private var formatSection: some View {
+        Section {
+            Picker("Format", selection: $settings.frameFormat) {
+                ForEach(FrameFormat.allCases) { format in
+                    Text(format.name).tag(format)
+                }
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+        } header: {
+            Text("Format")
+        } footer: {
+            Group {
+                if settings.frameFormat != .original, settings.background == .none {
+                    Text("\(settings.frameFormat.use). Without a background, the recording is cropped to fit and follows the cursor.")
+                } else {
+                    Text(settings.frameFormat.use)
+                }
+            }
+            .foregroundStyle(.secondary)
         }
     }
 

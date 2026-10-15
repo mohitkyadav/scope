@@ -24,6 +24,8 @@ nonisolated struct FrameRenderer: @unchecked Sendable {
     let zoomSegments: [ZoomSegment]
     /// The smoothed cursor path the zoomed-in view follows.
     let camera: ZoomCamera?
+    /// A very smooth cursor path that the framing follows when the recording is cropped to fill the frame.
+    let framingCursor: CursorPath?
     /// Shown before the recording's first video frame arrives, instead of a black frame.
     let firstFrame: CIImage?
     let notes: [Note]
@@ -42,7 +44,7 @@ nonisolated struct FrameRenderer: @unchecked Sendable {
     /// How long a click ripple lasts.
     private static let rippleDuration = 0.5
 
-    var canvasSize: CGSize { videoSize }
+    var canvasSize: CGSize { settings.frameFormat.canvasSize(for: videoSize) }
 
     /// `source` is the screen frame and `webcam` the camera frame at `time` in the final video, if there are any.
     func render(source: CIImage?, webcam: CIImage? = nil, time outputTime: Double) -> CIImage {
@@ -82,7 +84,7 @@ nonisolated struct FrameRenderer: @unchecked Sendable {
             frame = Self.average(cursors).composited(over: frame)
         }
         let video = frame.cropped(to: videoRect)
-        return settings.background == .none ? zoom(video, at: time) : placeOnBackground(video, at: time)
+        return settings.background == .none ? fill(video, at: time) : placeOnBackground(video, at: time)
     }
 
     // MARK: - Motion blur
@@ -240,26 +242,42 @@ nonisolated struct FrameRenderer: @unchecked Sendable {
         return state.amount > 0.001 ? state : AutoZoom.State()
     }
 
-    /// Without a background: the recording grows by the zoom level towards the camera's focus, and the
-    /// view stops at the recording's edges.
-    private func zoom(_ frame: CIImage, at time: Double) -> CIImage {
-        let rect = CGRect(origin: .zero, size: videoSize)
-        guard let zoom = zoomCamera(at: time, window: rect) else { return frame }
-        return frame.transformed(by: Self.scale(around: zoom.anchor, by: zoom.scale)).cropped(to: rect)
+    /// Without a background: the recording fills the frame, cropped and following the cursor if the
+    /// frame is a different shape, and grows by the zoom level towards the camera's focus. The view
+    /// stops at the recording's edges.
+    private func fill(_ frame: CIImage, at time: Double) -> CIImage {
+        let canvas = CGRect(origin: .zero, size: canvasSize)
+        let (window, scale) = layout(at: time)
+        var transform = CGAffineTransform(scaleX: scale, y: scale).concatenating(CGAffineTransform(translationX: window.minX, y: window.minY))
+        if let zoom = zoomCamera(at: time, window: window) {
+            transform = transform.concatenating(Self.scale(around: zoom.anchor, by: zoom.scale))
+        }
+        return frame.transformed(by: transform).cropped(to: canvas)
     }
 
-    /// Where the recording sits on the canvas before any zoom, and how much it's scaled down to fit:
-    /// the whole canvas without a background, or the area inside the padding with one.
-    private var windowLayout: (frame: CGRect, scale: CGFloat) {
+    /// Where the recording sits on the canvas at `time` before any zoom, and how much it's scaled.
+    /// With a background it fits inside the padding. Without one it fills the canvas, and if the
+    /// canvas is a different shape, the part that doesn't fit is cropped off, keeping the cursor in view.
+    private func layout(at time: Double) -> (frame: CGRect, scale: CGFloat) {
         let canvas = CGRect(origin: .zero, size: canvasSize)
-        guard settings.background != .none else { return (canvas, 1) }
-        let inset = settings.padding * min(canvas.width, canvas.height)
-        let scale = min(
-            (canvas.width - 2 * inset) / videoSize.width,
-            (canvas.height - 2 * inset) / videoSize.height
-        )
+        guard settings.background == .none else {
+            let inset = settings.padding * min(canvas.width, canvas.height)
+            let scale = min(
+                (canvas.width - 2 * inset) / videoSize.width,
+                (canvas.height - 2 * inset) / videoSize.height
+            )
+            let size = CGSize(width: videoSize.width * scale, height: videoSize.height * scale)
+            return (CGRect(x: (canvas.width - size.width) / 2, y: (canvas.height - size.height) / 2, width: size.width, height: size.height), scale)
+        }
+
+        let scale = max(canvas.width / videoSize.width, canvas.height / videoSize.height)
         let size = CGSize(width: videoSize.width * scale, height: videoSize.height * scale)
-        return (CGRect(x: (canvas.width - size.width) / 2, y: (canvas.height - size.height) / 2, width: size.width, height: size.height), scale)
+        // Centre on the cursor, without letting the recording's edges into view.
+        let focus = framingCursor?.position(at: time) ?? CGPoint(x: 0.5, y: 0.5)
+        let x = Self.clamp(canvas.width / 2 - min(max(focus.x, 0), 1) * size.width, between: canvas.width - size.width, and: 0)
+        // Cursor positions use a top-left origin; Core Image uses bottom-left.
+        let y = Self.clamp(canvas.height / 2 - (1 - min(max(focus.y, 0), 1)) * size.height, between: canvas.height - size.height, and: 0)
+        return (CGRect(x: x, y: y, width: size.width, height: size.height), scale)
     }
 
     /// The zoom at `time`, as a scale around a fixed point on the canvas, or `nil` when not zoomed in.
@@ -273,7 +291,7 @@ nonisolated struct FrameRenderer: @unchecked Sendable {
 
     /// Where a point of the recording shows up on the canvas at `time`, after placing and zooming.
     private func videoToCanvas(at time: Double) -> CGAffineTransform {
-        let (frame, scale) = windowLayout
+        let (frame, scale) = layout(at: time)
         let placed = CGAffineTransform(scaleX: scale, y: scale).concatenating(CGAffineTransform(translationX: frame.minX, y: frame.minY))
         guard let zoom = zoomCamera(at: time, window: frame) else { return placed }
         return placed.concatenating(Self.scale(around: zoom.anchor, by: zoom.scale))
@@ -318,7 +336,7 @@ nonisolated struct FrameRenderer: @unchecked Sendable {
 
         let canvas = CGRect(origin: .zero, size: canvasSize)
         let shorterSide = min(canvas.width, canvas.height)
-        let (frame, scale) = windowLayout
+        let (frame, scale) = layout(at: time)
         let radius = settings.cornerRadius * pixelsPerPoint * scale
 
         let placed = video.transformed(by: CGAffineTransform(scaleX: scale, y: scale)
