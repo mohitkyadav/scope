@@ -52,14 +52,51 @@ nonisolated struct MovieOptions: Sendable {
     }
 }
 
-nonisolated struct GIFOptions: Sendable {
+nonisolated struct GIFOptions: Equatable, Sendable {
     /// The section to export, in seconds of the final video.
     var start: Double
     var end: Double
     var width = 640
     var frameRate = 15
-    /// Ease the cursor back to where it started, so the loop doesn't jump.
+    /// How much faster than the video the GIF plays.
+    var speed = 1.0
+    /// How many times it plays, or 0 for forever.
+    var plays = 0
+    /// Play forwards, then backwards back to the start.
+    var boomerang = false
+    /// Seconds to stay on the last frame before playing again.
+    var hold = 0.0
+    /// Ease the cursor back to where it started, so the loop doesn't jump. Not needed for a boomerang,
+    /// which comes back by itself.
     var loopsCursor = true
+    var includesWebcam = true
+    var includesNotes = true
+
+    /// A width and frame rate tried to fit a GIF into a size limit.
+    struct Step: Equatable, Sendable {
+        var width: Int
+        var frameRate: Int
+    }
+
+    /// Tried in this order, best first.
+    static let fittingSteps = [
+        Step(width: 1080, frameRate: 24), Step(width: 1080, frameRate: 20), Step(width: 800, frameRate: 24),
+        Step(width: 800, frameRate: 20), Step(width: 800, frameRate: 15), Step(width: 640, frameRate: 20),
+        Step(width: 640, frameRate: 15), Step(width: 480, frameRate: 15), Step(width: 480, frameRate: 10),
+    ]
+
+    /// When each frame is taken from the video, in seconds of the final video, in the order they play.
+    var times: [Double] {
+        let forwards = Array(stride(from: start, to: end, by: speed / Double(frameRate)))
+        guard boomerang, forwards.count > 2 else { return forwards }
+        // Back again without showing either end twice.
+        return forwards + forwards.dropFirst().dropLast().reversed()
+    }
+
+    /// How long the GIF plays once through, in seconds.
+    var playingTime: Double {
+        Double(times.count) / Double(frameRate) + hold
+    }
 }
 
 nonisolated enum ExportError: LocalizedError {
@@ -254,41 +291,30 @@ nonisolated enum Exporter {
     /// Renders a section of the timeline as frames and saves them as a GIF that loops forever.
     static func exportGIF(_ job: ExportJob, options: GIFOptions, to url: URL, progress: @escaping @Sendable (Double) -> Void) async throws {
         let frameDuration = 1 / Double(options.frameRate)
-        var renderer = job.renderer
-        if options.loopsCursor {
-            // Finish easing back on the last frame, so the first frame follows it without a jump.
-            renderer.cursorLoop = CursorLoop(start: options.start, end: options.end - frameDuration)
-        }
-
-        let size = Self.size(forHeight: Int((Double(options.width) * job.canvasSize.height / max(job.canvasSize.width, 1)).rounded()), canvas: job.canvasSize)
-        let generator = AVAssetImageGenerator(asset: job.scene.composition)
-        generator.videoComposition = job.scene.videoComposition(renderer: renderer, renderSize: size, frameRate: 60)
-        generator.requestedTimeToleranceBefore = .zero
-        generator.requestedTimeToleranceAfter = .zero
-
-        let times = stride(from: options.start, to: options.end, by: frameDuration).map {
-            CMTime(seconds: $0, preferredTimescale: 60_000)
-        }
+        let times = options.times
         guard !times.isEmpty,
               let destination = CGImageDestinationCreateWithURL(url as CFURL, UTType.gif.identifier as CFString, times.count, nil)
         else { throw ExportError.cannotWrite }
 
-        // Loop forever.
-        CGImageDestinationSetProperties(destination, [
-            kCGImagePropertyGIFDictionary: [kCGImagePropertyGIFLoopCount: 0],
-        ] as CFDictionary)
-        let frameProperties = [
-            kCGImagePropertyGIFDictionary: [kCGImagePropertyGIFDelayTime: frameDuration],
-        ] as CFDictionary
+        // Without a loop count the GIF plays once. ImageIO turns "plays" into the GIF's own repeat count.
+        if options.plays != 1 {
+            CGImageDestinationSetProperties(destination, [
+                kCGImagePropertyGIFDictionary: [kCGImagePropertyGIFLoopCount: options.plays],
+            ] as CFDictionary)
+        }
+        // The last frame before the GIF turns around or starts again stays up for the hold.
+        let lastForwards = times.firstIndex(of: times.max() ?? 0) ?? times.count - 1
 
         var written = 0
-        for await result in generator.images(for: times) {
+        for await result in gifFrames(job, options: options, at: times) {
             if Task.isCancelled {
                 try? FileManager.default.removeItem(at: url)
                 throw CancellationError()
             }
-            let image = try result.image
-            CGImageDestinationAddImage(destination, image, frameProperties)
+            let delay = written == lastForwards ? frameDuration + options.hold : frameDuration
+            CGImageDestinationAddImage(destination, try result.image, [
+                kCGImagePropertyGIFDictionary: [kCGImagePropertyGIFDelayTime: delay],
+            ] as CFDictionary)
             written += 1
             progress(Double(written) / Double(times.count))
         }
@@ -296,5 +322,45 @@ nonisolated enum Exporter {
             try? FileManager.default.removeItem(at: url)
             throw ExportError.cannotWrite
         }
+    }
+
+    /// Roughly how big the GIF will be, in bytes, from a few of its frames encoded at its width.
+    /// Each frame is stored whole, so the size grows with the number of frames.
+    static func estimateGIFSize(_ job: ExportJob, options: GIFOptions) async -> Int? {
+        let times = options.times
+        guard !times.isEmpty else { return nil }
+        let samples = (0..<4).map { times[min(times.count - 1, $0 * times.count / 4)] }
+        let data = NSMutableData()
+        guard let destination = CGImageDestinationCreateWithData(data, UTType.gif.identifier as CFString, samples.count, nil) else { return nil }
+        var encoded = 0
+        for await result in gifFrames(job, options: options, at: samples) {
+            guard let image = try? result.image else { continue }
+            CGImageDestinationAddImage(destination, image, nil)
+            encoded += 1
+        }
+        guard encoded > 0, CGImageDestinationFinalize(destination) else { return nil }
+        return data.length * times.count / encoded
+    }
+
+    /// The finished frames at `times`, at the GIF's size, with what it leaves out left out.
+    private static func gifFrames(_ job: ExportJob, options: GIFOptions, at times: [Double]) -> AVAssetImageGenerator.Images {
+        var renderer = job.renderer
+        if !options.includesWebcam {
+            renderer.settings.webcamVisible = false
+        }
+        if !options.includesNotes {
+            renderer.notes = []
+        }
+        if options.loopsCursor, !options.boomerang {
+            // Finish easing back on the last frame, so the first frame follows it without a jump.
+            renderer.cursorLoop = CursorLoop(start: options.start, end: options.end - options.speed / Double(options.frameRate))
+        }
+
+        let size = Self.size(forHeight: Int((Double(options.width) * job.canvasSize.height / max(job.canvasSize.width, 1)).rounded()), canvas: job.canvasSize)
+        let generator = AVAssetImageGenerator(asset: job.scene.composition)
+        generator.videoComposition = job.scene.videoComposition(renderer: renderer, renderSize: size, frameRate: 60)
+        generator.requestedTimeToleranceBefore = .zero
+        generator.requestedTimeToleranceAfter = .zero
+        return generator.images(for: times.map { CMTime(seconds: $0, preferredTimescale: 60_000) })
     }
 }

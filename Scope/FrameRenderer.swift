@@ -20,7 +20,7 @@ nonisolated struct FrameRenderer: @unchecked Sendable {
     let sprites: CursorSprites?
     /// Video pixels per screen point at recording time, e.g. 2 on a Retina display.
     let pixelsPerPoint: CGFloat
-    let settings: EditorSettings
+    var settings: EditorSettings
     let zoomSegments: [ZoomSegment]
     /// The smoothed cursor path the zoomed-in view follows.
     let camera: ZoomCamera?
@@ -28,7 +28,7 @@ nonisolated struct FrameRenderer: @unchecked Sendable {
     let framingCursor: CursorPath?
     /// Shown before the recording's first video frame arrives, instead of a black frame.
     let firstFrame: CIImage?
-    let notes: [Note]
+    var notes: [Note]
     /// Each note drawn as a pill, by `Note.id`.
     let noteImages: [UUID: CIImage]
     /// Where the webcam bubble is hidden.
