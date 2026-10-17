@@ -454,6 +454,26 @@ final class EditorModel {
         selection = .zoom(zoom.id)
     }
 
+    /// When clicks happen in the final video, for marking them on the timeline. Clicks in parts
+    /// that were cut out are left out.
+    var clickMarkers: [Double] {
+        let map = timeMap
+        return (cursorTrack?.clicks ?? [])
+            .filter { click in edits.clips.contains { click.t >= $0.start && click.t <= $0.end } }
+            .map { map.outputTime(at: $0.t) }
+    }
+
+    /// When there's typing in the final video, for marking it on the timeline.
+    var typingMarkers: [ClosedRange<Double>] {
+        let map = timeMap
+        return typingBursts.compactMap { burst in
+            let start = map.outputTime(at: burst.t)
+            let end = map.outputTime(at: burst.t + burst.duration)
+            // Typing that was cut out entirely shrinks to nothing.
+            return end - start > 0.01 ? start...end : nil
+        }
+    }
+
     /// Whether the recording noted when keys were pressed, which zooming on typing needs.
     var hasTyping: Bool { cursorTrack?.keyPresses != nil }
 

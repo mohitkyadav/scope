@@ -457,6 +457,8 @@ private struct TimelineTracks: View {
                 .frame(width: max(clip.duration * pointsPerSecond, 2))
                 .offset(x: map.outputStarts[index] * pointsPerSecond)
             }
+            ActivityMarkers(clicks: model.clickMarkers, typing: model.typingMarkers, pointsPerSecond: pointsPerSecond)
+                .allowsHitTesting(false)
 
         case .zooms:
             ForEach(model.edits.zooms) { zoom in
@@ -653,6 +655,29 @@ struct TimelineBlock: View {
                 }
             }
             .padding(.vertical, isCapsule ? 4 : 3)
+    }
+}
+
+/// Where the clicks and typing are, along the bottom of the video row: a dot for each click and a
+/// thin bar for each stretch of typing.
+private struct ActivityMarkers: View {
+    let clicks: [Double]
+    let typing: [ClosedRange<Double>]
+    let pointsPerSecond: Double
+
+    var body: some View {
+        Canvas { context, size in
+            let y = size.height - 10
+            for range in typing {
+                let rect = CGRect(x: range.lowerBound * pointsPerSecond, y: y - 1.5, width: max((range.upperBound - range.lowerBound) * pointsPerSecond, 3), height: 3)
+                context.fill(Path(roundedRect: rect, cornerRadius: 1.5), with: .color(.white.opacity(0.55)))
+            }
+            for time in clicks {
+                let dot = CGRect(x: time * pointsPerSecond - 3, y: y - 3, width: 6, height: 6)
+                context.fill(Path(ellipseIn: dot.insetBy(dx: -1, dy: -1)), with: .color(.black.opacity(0.35)))
+                context.fill(Path(ellipseIn: dot), with: .color(.white))
+            }
+        }
     }
 }
 
