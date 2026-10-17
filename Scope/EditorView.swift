@@ -16,6 +16,7 @@ struct EditorView: View {
     @State private var isRenaming = false
     @State private var newName = ""
     @State private var renameError: String?
+    @State private var zoomThumbnail: CGImage?
     @Environment(\.undoManager) private var undoManager
     /// Called with the project's new place when it's renamed, so the window keeps track of it.
     private let onMove: (URL) -> Void
@@ -125,6 +126,13 @@ struct EditorView: View {
             RecentProjects.shared.add(model.project.url)
             await model.load()
         }
+        .task(id: thumbnailTime) {
+            guard let thumbnailTime else { return }
+            // The last frame stays up until the new one is ready, so the picker doesn't flash.
+            if let image = await model.thumbnail(at: Double(thumbnailTime) / 10) {
+                zoomThumbnail = image
+            }
+        }
         .onDisappear {
             model.close()
             // The project is closed, so its edits can't be undone any more.
@@ -171,6 +179,9 @@ struct EditorView: View {
                     segment.level = zoom.level
                     segment.transition = zoom.transition
                     segment.followsCursor = zoom.followsCursor
+                    segment.easing = zoom.easing
+                    segment.focusX = zoom.focusX
+                    segment.focusY = zoom.focusY
                 }
             },
             onZoomSliderReleased: { actionName in
@@ -191,8 +202,22 @@ struct EditorView: View {
                     model.endGesture("Edit Note", undoManager: undoManager)
                 }
             },
-            onHexEditingChanged: { model.isEditingText = $0 }
+            onHexEditingChanged: { model.isEditingText = $0 },
+            zoomThumbnail: zoomThumbnail,
+            videoAspectRatio: zoomThumbnail.map { CGFloat($0.width) / CGFloat(max($0.height, 1)) } ?? 16 / 9,
+            automaticFocus: model.selectedZoom.flatMap(model.automaticFocus(of:)),
+            zoomedView: { model.zoomedView(level: $0) },
+            hasTyping: model.hasTyping
         )
+    }
+
+    /// When to show the selected zoom's area: once it's fully zoomed in, in tenths of a second so
+    /// small drags don't fetch a new frame.
+    private var thumbnailTime: Int? {
+        guard let zoom = model.selectedZoom else { return nil }
+        let transition = zoom.transition ?? model.settings.zoomTransition
+        let time = min(zoom.start + transition, (zoom.start + zoom.end) / 2)
+        return Int((time * 10).rounded())
     }
 
     /// The project's name, or "Today at 18:42" if it hasn't been given one, like the main window's list.

@@ -86,8 +86,14 @@ final class EditorModel {
     private var cameraCursor: CursorPath?
     /// A very smooth cursor path for framing a recording cropped to a different shape.
     private var framingCursor: CursorPath?
-    /// The zoom camera, and the zooms and zoom level it was worked out for.
-    private var zoomCamera: (camera: ZoomCamera, zooms: [ZoomSegment], level: Double)?
+    /// Stretches of typing, placed where they probably were, for zooming in on them.
+    private var typingBursts: [CursorTrack.Click] = []
+    /// The zoom camera, and the zooms, zoom level and typing it was worked out for.
+    private var zoomCamera: (camera: ZoomCamera, zooms: [ZoomSegment], level: Double, typing: Bool)?
+    /// When the cursor fades out for standing still, for the delay it was worked out for.
+    private var cursorIdle: CursorIdle?
+    /// Frames of the recording for picking a zoom's area, by tenth of a second.
+    private var thumbnails: [Int: CGImage] = [:]
     /// The smoothing `cursorPath` was built with, so it's only rebuilt when that changes.
     private var cursorPathSmoothing: Double?
     private var pixelsPerPoint: CGFloat = 2
@@ -144,8 +150,10 @@ final class EditorModel {
             if track.areaWidth > 0 {
                 pixelsPerPoint = videoSize.width / track.areaWidth
             }
-            cameraCursor = await Task.detached { CursorPath(track: track, smoothing: 0.5) }.value
+            let cameraCursor = await Task.detached { CursorPath(track: track, smoothing: 0.5) }.value
+            self.cameraCursor = cameraCursor
             framingCursor = await Task.detached { CursorPath.steady(track: track) }.value
+            typingBursts = AutoZoom.typingBursts(keyPresses: track.keyPresses ?? [], clicks: track.clicks, cursor: cameraCursor)
         }
         if let arrow = CursorSprite.arrow() {
             var shapes: [String: CursorSprite] = [:]
@@ -163,7 +171,7 @@ final class EditorModel {
         recordingDate = (try? project.url.resourceValues(forKeys: [.creationDateKey]))?.creationDate
         isRestoring = true
         settings = file?.settings ?? EditorSettings()
-        edits = file?.edits ?? .initial(duration: sourceDuration, clicks: cursorTrack?.clicks ?? [])
+        edits = file?.edits ?? .initial(duration: sourceDuration, zooms: suggestedZooms())
         isRestoring = false
 
         await rebuild()
@@ -440,16 +448,66 @@ final class EditorModel {
     /// Adds a two-second zoom at the playhead and selects it.
     func addZoom(undoManager: UndoManager?) {
         let start = timeMap.sourceTime(at: currentTime)
-        let zoom = ZoomSegment(start: start, end: min(start + 2, sourceDuration))
+        let zoom = ZoomSegment(start: start, end: min(start + 2, sourceDuration), isManual: true)
         guard zoom.end - zoom.start >= Self.minimumZoomLength else { return }
         perform("Add Zoom", undoManager: undoManager) { $0.zooms.append(zoom) }
         selection = .zoom(zoom.id)
     }
 
-    /// Replaces the zooms with ones suggested from the recorded clicks.
+    /// Whether the recording noted when keys were pressed, which zooming on typing needs.
+    var hasTyping: Bool { cursorTrack?.keyPresses != nil }
+
+    /// Zooms around the recorded clicks, and typing if that's on, as the settings say.
+    private func suggestedZooms() -> [ZoomSegment] {
+        AutoZoom.segments(
+            for: cursorTrack?.clicks ?? [],
+            typing: settings.zoomOnTyping ? typingBursts : [],
+            duration: sourceDuration,
+            sensitivity: settings.zoomSensitivity
+        )
+    }
+
+    /// Replaces the suggested zooms with new suggestions from the recorded clicks (and typing).
+    /// Zooms added or changed by hand stay, and suggestions that would overlap them are left out.
     func suggestZooms(undoManager: UndoManager?) {
-        let zooms = AutoZoom.segments(for: cursorTrack?.clicks ?? [], duration: sourceDuration)
-        perform("Suggest Zooms", undoManager: undoManager) { $0.zooms = zooms }
+        let kept = edits.zooms.filter { $0.isManual == true }
+        let suggested = suggestedZooms().filter { zoom in !kept.contains { $0.overlaps(zoom) } }
+        perform("Suggest Zooms", undoManager: undoManager) { edits in
+            edits.zooms = (kept + suggested).sorted { $0.start < $1.start }
+        }
+    }
+
+    /// Where a zoom aims when its point hasn't been picked by hand, as fractions of the recording.
+    func automaticFocus(of zoom: ZoomSegment) -> CGPoint? {
+        var automatic = zoom
+        automatic.focusX = nil
+        automatic.focusY = nil
+        let camera = ZoomCamera(
+            segments: [automatic], cursor: cameraCursor, clicks: cursorTrack?.clicks ?? [],
+            typing: settings.zoomOnTyping ? typingBursts : [], defaultLevel: settings.zoomLevel
+        )
+        return camera.focus(at: zoom.start)
+    }
+
+    /// A small frame of the recording at `time`, for picking a zoom's area.
+    func thumbnail(at time: Double) async -> CGImage? {
+        let key = Int((time * 10).rounded())
+        if let image = thumbnails[key] {
+            return image
+        }
+        guard let screen else { return nil }
+        let generator = AVAssetImageGenerator(asset: screen)
+        generator.maximumSize = CGSize(width: 800, height: 800)
+        generator.requestedTimeToleranceBefore = CMTime(seconds: 0.1, preferredTimescale: 600)
+        generator.requestedTimeToleranceAfter = CMTime(seconds: 0.1, preferredTimescale: 600)
+        guard let (image, _) = try? await generator.image(at: CMTime(seconds: Double(key) / 10, preferredTimescale: 600)) else { return nil }
+        thumbnails[key] = image
+        return image
+    }
+
+    /// How much of the recording a zoom to `level` shows, as fractions of its width and height.
+    func zoomedView(level: Double) -> CGSize {
+        FrameRenderer.zoomedView(level: level, settings: settings, videoSize: videoSize)
     }
 
     var selectedZoom: ZoomSegment? {
@@ -463,6 +521,7 @@ final class EditorModel {
         let apply: (inout TimelineEdits) -> Void = { edits in
             if let index = edits.zooms.firstIndex(where: { $0.id == id }) {
                 change(&edits.zooms[index])
+                edits.zooms[index].isManual = true
             }
         }
         if isDragging {
@@ -484,6 +543,7 @@ final class EditorModel {
         }
         update { edits in
             guard let index = edits.zooms.firstIndex(where: { $0.id == id }) else { return }
+            edits.zooms[index].isManual = true
             switch edit {
             case .move:
                 let length = original.end - original.start
@@ -837,7 +897,8 @@ final class EditorModel {
             noteImages: images,
             webcamHides: edits.webcamHides,
             backgroundImage: await currentBackgroundLayer(),
-            timeMap: scene.timeMap
+            timeMap: scene.timeMap,
+            cursorIdle: currentCursorIdle()
         )
         return renderer
     }
@@ -924,12 +985,27 @@ final class EditorModel {
 
     /// The zoom camera for the current zooms and zoom level, worked out again only when they change.
     private func currentZoomCamera() -> ZoomCamera {
-        if let zoomCamera, zoomCamera.zooms == edits.zooms, zoomCamera.level == settings.zoomLevel {
+        let typing = settings.zoomOnTyping
+        if let zoomCamera, zoomCamera.zooms == edits.zooms, zoomCamera.level == settings.zoomLevel, zoomCamera.typing == typing {
             return zoomCamera.camera
         }
-        let camera = ZoomCamera(segments: edits.zooms, cursor: cameraCursor, clicks: cursorTrack?.clicks ?? [], defaultLevel: settings.zoomLevel)
-        zoomCamera = (camera, edits.zooms, settings.zoomLevel)
+        let camera = ZoomCamera(
+            segments: edits.zooms, cursor: cameraCursor, clicks: cursorTrack?.clicks ?? [],
+            typing: typing ? typingBursts : [], defaultLevel: settings.zoomLevel
+        )
+        zoomCamera = (camera, edits.zooms, settings.zoomLevel, typing)
         return camera
+    }
+
+    /// When the cursor fades out for standing still, worked out again only when the delay changes.
+    private func currentCursorIdle() -> CursorIdle? {
+        guard settings.hideIdleCursor, let cursorTrack else { return nil }
+        if let cursorIdle, cursorIdle.delay == settings.idleCursorDelay {
+            return cursorIdle
+        }
+        let idle = CursorIdle(track: cursorTrack, delay: settings.idleCursorDelay)
+        cursorIdle = idle
+        return idle
     }
 
     private nonisolated static func firstFrame(of asset: AVAsset) async -> CIImage? {

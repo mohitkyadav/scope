@@ -38,6 +38,16 @@ struct EditorInspector: View {
     var onNoteEditingChanged: (Bool) -> Void = { _ in }
     /// Called when the border's hex field gains or loses focus, so typing in it doesn't trigger shortcuts.
     var onHexEditingChanged: (Bool) -> Void = { _ in }
+    /// A frame of the recording during the selected zoom, for picking its area.
+    var zoomThumbnail: CGImage?
+    /// The recording's width divided by its height.
+    var videoAspectRatio: CGFloat = 16 / 9
+    /// Where the selected zoom aims when its area isn't picked by hand.
+    var automaticFocus: CGPoint?
+    /// How much of the recording a zoom to a level shows, as fractions of its width and height.
+    var zoomedView: (Double) -> CGSize = { CGSize(width: 1 / $0, height: 1 / $0) }
+    /// Whether the recording noted typing, so zooms can be suggested for it.
+    var hasTyping = false
 
     @FocusState private var isEditingNote: Bool
     @FocusState private var isEditingHex: Bool
@@ -68,6 +78,7 @@ struct EditorInspector: View {
                     selectedZoomSection(zoom)
                 }
                 zoomDefaultsSection
+                spotlightSection
                 motionSection
             case .cursor:
                 cursorSection
@@ -329,15 +340,59 @@ struct EditorInspector: View {
                 LabeledSlider("Transition", value: $settings.zoomTransition, in: 0.3...5) {
                     String(format: "%.1f s", $0)
                 }
+                Picker("Animation", selection: $settings.zoomEasing) {
+                    ForEach(ZoomEasing.allCases) { Text($0.name).tag($0) }
+                }
+                .pickerStyle(.menu)
+                LabeledSlider(
+                    "Sensitivity",
+                    value: $settings.zoomSensitivity,
+                    in: 0...1,
+                    format: { "\(Int(($0 * 100).rounded()))%" },
+                    onEditingChanged: { if !$0 { suggestZooms() } }
+                )
+                .help("Lower makes fewer, longer zooms; higher makes more, shorter ones")
+                if hasTyping {
+                    Toggle("Zoom on typing", isOn: Binding(
+                        get: { settings.zoomOnTyping },
+                        set: { zoomOnTyping in
+                            settings.zoomOnTyping = zoomOnTyping
+                            suggestZooms()
+                        }
+                    ))
+                    .help("Also zoom in where you type, at the last place you clicked")
+                }
                 LabeledContent("Zooms") {
-                    Button("Suggest from Clicks", action: suggestZooms)
+                    Button("Suggest Again", action: suggestZooms)
                 }
             }
             .disabled(!settings.autoZoom)
         } header: {
             Text(selectedZoom == nil ? "Zoom" : "Defaults")
         } footer: {
-            Text("Defaults for \(zoomCount == 1 ? "the 1 zoom" : "the \(zoomCount) zooms") on the timeline. Select a zoom to give it its own settings.")
+            Text("Defaults for \(zoomCount == 1 ? "the 1 zoom" : "the \(zoomCount) zooms") on the timeline. Select a zoom to give it its own settings. Changing the sensitivity suggests zooms again, keeping ones you've changed.")
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private var spotlightSection: some View {
+        Section {
+            Picker("Spotlight", selection: $settings.spotlight) {
+                ForEach(Spotlight.allCases) { Text($0.name).tag($0) }
+            }
+            .pickerStyle(.menu)
+            if settings.spotlight != .off {
+                LabeledSlider("Size", value: $settings.spotlightSize, in: 0.05...0.35) {
+                    "\(Int(($0 * 100).rounded()))%"
+                }
+                LabeledSlider("Dim", value: $settings.spotlightDim, in: 0.1...1) {
+                    "\(Int(($0 * 100).rounded()))%"
+                }
+            }
+        } header: {
+            Text("Spotlight")
+        } footer: {
+            Text("Darkens everything but a circle around the cursor.")
                 .foregroundStyle(.secondary)
         }
     }
@@ -366,6 +421,13 @@ struct EditorInspector: View {
                 .help("Show the hand over links, the text cursor over text and so on, as while recording")
             Toggle("Glide across cuts", isOn: $settings.cursorGlide)
                 .help("Where part of the recording is cut out, move the cursor smoothly instead of letting it jump")
+            Toggle("Hide when still", isOn: $settings.hideIdleCursor)
+                .help("Fade the cursor out while it isn't moving, and back in when it moves")
+            if settings.hideIdleCursor {
+                LabeledSlider("Hide after", value: $settings.idleCursorDelay, in: 0.5...5) {
+                    String(format: "%.1f s", $0)
+                }
+            }
         }
     }
 }
@@ -408,20 +470,37 @@ extension EditorInspector {
                 format: { String(format: "%.1f s", $0) },
                 onEditingChanged: { if !$0 { onZoomSliderReleased("Change Zoom Transition") } }
             )
-            Toggle("Follow cursor", isOn: Binding(
-                get: { zoom.followsCursor ?? true },
-                set: { follows in
+            Picker("Animation", selection: Binding(
+                get: { zoom.easing ?? settings.zoomEasing },
+                set: { easing in
                     var changed = zoom
-                    changed.followsCursor = follows
-                    onZoomChange(changed, false, follows ? "Follow Cursor" : "Stop Following Cursor")
+                    changed.easing = easing
+                    onZoomChange(changed, false, "Change Zoom Animation")
                 }
-            ))
+            )) {
+                ForEach(ZoomEasing.allCases) { Text($0.name).tag($0) }
+            }
+            .pickerStyle(.menu)
+            if zoom.focus == nil {
+                Toggle("Follow cursor", isOn: Binding(
+                    get: { zoom.followsCursor ?? true },
+                    set: { follows in
+                        var changed = zoom
+                        changed.followsCursor = follows
+                        onZoomChange(changed, false, follows ? "Follow Cursor" : "Stop Following Cursor")
+                    }
+                ))
+            }
+            zoomAreaRow(zoom)
             LabeledContent("Settings") {
                 Button("Use Defaults") {
                     var changed = zoom
                     changed.level = nil
                     changed.transition = nil
                     changed.followsCursor = nil
+                    changed.easing = nil
+                    changed.focusX = nil
+                    changed.focusY = nil
                     onZoomChange(changed, false, "Use Default Zoom Settings")
                 }
                 .disabled(!zoom.hasOwnSettings)
@@ -430,6 +509,52 @@ extension EditorInspector {
             Text("Selected Zoom")
         } footer: {
             Text(zoom.hasOwnSettings ? "This zoom has its own settings." : "Uses the zoom defaults below until you change something.")
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    /// The part of the recording the zoom shows, which can be dragged to pick it by hand.
+    fileprivate func zoomAreaRow(_ zoom: ZoomSegment) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text("Area")
+                Spacer()
+                Button("Automatic") {
+                    var changed = zoom
+                    changed.focusX = nil
+                    changed.focusY = nil
+                    onZoomChange(changed, false, "Zoom In Automatically")
+                }
+                .controlSize(.small)
+                .disabled(zoom.focus == nil)
+                .help("Aim at the first click and follow the cursor as set")
+            }
+            ZoomAreaPicker(
+                image: zoomThumbnail,
+                aspectRatio: videoAspectRatio,
+                center: zoom.focus ?? automaticFocus ?? CGPoint(x: 0.5, y: 0.5),
+                size: zoomedView(zoom.level ?? settings.zoomLevel),
+                isPicked: zoom.focus != nil,
+                onMove: { center in
+                    var changed = zoom
+                    changed.focusX = center.x
+                    changed.focusY = center.y
+                    onZoomChange(changed, true, "Move Zoom")
+                },
+                onResize: { size in
+                    // The view shrinks in proportion to the level.
+                    let base = zoomedView(1)
+                    let fit = min(base.width / max(size.width, 0.01), base.height / max(size.height, 0.01))
+                    var changed = zoom
+                    changed.level = min(max(fit, 1.1), 3)
+                    onZoomChange(changed, true, "Change Zoom Level")
+                },
+                onEnded: onZoomSliderReleased
+            )
+            Text(zoom.focus == nil
+                 ? "Drag the box to pick what this zoom shows, or a corner to zoom in or out."
+                 : "This zoom stays on the box. Drag a corner to zoom in or out.")
+                .font(.caption)
                 .foregroundStyle(.secondary)
         }
     }

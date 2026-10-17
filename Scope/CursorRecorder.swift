@@ -54,6 +54,9 @@ nonisolated final class CursorRecorder: @unchecked Sendable {
     private var clicks: [CursorTrack.Click] = []
     private var pressedButtons = 0
     private var presses: [Int: CursorTrack.Click] = [:]
+    private var keyPresses: [TimeInterval] = []
+    /// The system's count of key presses so far, which says that keys were pressed but not which.
+    private var keyCount: UInt32?
 
     init(area: CaptureArea) {
         self.area = area
@@ -89,7 +92,8 @@ nonisolated final class CursorRecorder: @unchecked Sendable {
                 clicks: clicks
                     .filter { $0.t >= videoStart }
                     .map { CursorTrack.Click(t: $0.t - videoStart, duration: $0.duration, x: $0.x, y: $0.y, button: $0.button) }
-                    .sorted { $0.t < $1.t }
+                    .sorted { $0.t < $1.t },
+                keyPresses: keyPresses.filter { $0 >= videoStart }.map { $0 - videoStart }
             )
         }
     }
@@ -127,6 +131,15 @@ nonisolated final class CursorRecorder: @unchecked Sendable {
             }
         }
         pressedButtons = buttons
+
+        // Like the mouse buttons, this is polled, so it needs no Input Monitoring permission.
+        // Presses with ⌘ or ⌃ held are shortcuts, like stopping the recording, not typing.
+        let count = CGEventSource.counterForEventType(.combinedSessionState, eventType: .keyDown)
+        if let keyCount, count > keyCount,
+           CGEventSource.flagsState(.combinedSessionState).isDisjoint(with: [.maskCommand, .maskControl]) {
+            keyPresses += Array(repeating: now, count: Int(min(count - keyCount, 10)))
+        }
+        keyCount = count
     }
 
     /// Moves sample times so the video's first frame is 0. The last position before the video

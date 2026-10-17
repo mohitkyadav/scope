@@ -89,12 +89,9 @@ nonisolated struct TimelineEdits: Codable, Equatable, Sendable {
     var webcamFileName: String?
     var webcamOffset: Double?
 
-    /// The untouched recording: one clip covering all of it, with zooms suggested from the clicks.
-    static func initial(duration: Double, clicks: [CursorTrack.Click]) -> TimelineEdits {
-        TimelineEdits(
-            clips: [Clip(start: 0, end: duration)],
-            zooms: AutoZoom.segments(for: clicks, duration: duration)
-        )
+    /// The untouched recording: one clip covering all of it, with the suggested zooms.
+    static func initial(duration: Double, zooms: [ZoomSegment]) -> TimelineEdits {
+        TimelineEdits(clips: [Clip(start: 0, end: duration)], zooms: zooms)
     }
 
     private enum CodingKeys: String, CodingKey {

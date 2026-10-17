@@ -20,6 +20,10 @@ nonisolated struct EditorSettings: Equatable, Sendable {
     var cursorShapes = true
     /// Ease the cursor across cuts, from where it was before the cut, instead of letting it jump.
     var cursorGlide = true
+    /// Fade the cursor out while it stands still, and back in when it moves.
+    var hideIdleCursor = false
+    /// Seconds the cursor has to stand still before it fades out.
+    var idleCursorDelay = 2.0
 
     /// Zoom in on the zoom segments.
     var autoZoom = true
@@ -27,6 +31,18 @@ nonisolated struct EditorSettings: Equatable, Sendable {
     var zoomLevel = 1.5
     /// Seconds a zoom in or out takes to settle.
     var zoomTransition = 1.1
+    /// How zooms move in and out.
+    var zoomEasing = ZoomEasing.spring
+    /// How readily clicks become suggested zooms, from 0 (fewer, longer zooms) to 1 (more, shorter ones).
+    var zoomSensitivity = 0.5
+    /// Suggest zooms on typing as well as on clicks.
+    var zoomOnTyping = true
+    /// Dim the recording outside a circle around the cursor.
+    var spotlight = Spotlight.off
+    /// The spotlight's radius as a fraction of the frame's shorter side, as it shows on screen.
+    var spotlightSize = 0.14
+    /// How dark the recording gets outside the spotlight, from 0 to 1.
+    var spotlightDim = 0.5
     /// Blur things while they move, like a camera's shutter does, so zooms, pans and the cursor look smooth.
     var motionBlur = true
 
@@ -104,8 +120,9 @@ nonisolated struct EditorSettings: Equatable, Sendable {
 
 extension EditorSettings: Codable {
     private enum CodingKeys: String, CodingKey {
-        case cursorSmoothing, cursorSize, showClicks, cursorShapes, cursorGlide
-        case autoZoom, zoomLevel, zoomTransition, motionBlur
+        case cursorSmoothing, cursorSize, showClicks, cursorShapes, cursorGlide, hideIdleCursor, idleCursorDelay
+        case autoZoom, zoomLevel, zoomTransition, zoomEasing, zoomSensitivity, zoomOnTyping, motionBlur
+        case spotlight, spotlightSize, spotlightDim
         case webcamVisible, webcamX, webcamY, webcamSize, webcamShape, webcamBorder, webcamBorderColor, webcamBorderWidth, webcamShadow, webcamMirrored
         case webcamZoom, webcamFocusX, webcamFocusY
         case frameFormat
@@ -132,10 +149,18 @@ extension EditorSettings: Codable {
         read(.showClicks, into: &showClicks)
         read(.cursorShapes, into: &cursorShapes)
         read(.cursorGlide, into: &cursorGlide)
+        read(.hideIdleCursor, into: &hideIdleCursor)
+        read(.idleCursorDelay, into: &idleCursorDelay)
         read(.autoZoom, into: &autoZoom)
         read(.zoomLevel, into: &zoomLevel)
         read(.zoomTransition, into: &zoomTransition)
+        read(.zoomEasing, into: &zoomEasing)
+        read(.zoomSensitivity, into: &zoomSensitivity)
+        read(.zoomOnTyping, into: &zoomOnTyping)
         read(.motionBlur, into: &motionBlur)
+        read(.spotlight, into: &spotlight)
+        read(.spotlightSize, into: &spotlightSize)
+        read(.spotlightDim, into: &spotlightDim)
         read(.webcamVisible, into: &webcamVisible)
         read(.webcamX, into: &webcamX)
         read(.webcamY, into: &webcamY)
@@ -249,6 +274,21 @@ extension Background: Codable {
     nonisolated func encode(to encoder: Encoder) throws {
         var container = encoder.singleValueContainer()
         try container.encode(rawValue)
+    }
+}
+
+/// When the recording is dimmed around the cursor.
+nonisolated enum Spotlight: String, CaseIterable, Identifiable, Codable, Sendable {
+    case off, zooms, always
+
+    var id: Self { self }
+
+    var name: String {
+        switch self {
+        case .off: "Off"
+        case .zooms: "During Zooms"
+        case .always: "Always"
+        }
     }
 }
 

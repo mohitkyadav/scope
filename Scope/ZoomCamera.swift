@@ -10,6 +10,7 @@ import Foundation
 ///
 /// Each zoom starts on its first click (or the cursor), then holds still while the cursor moves
 /// around the middle of the zoomed-in view, and only glides after it when it heads towards an edge.
+/// While typing it holds on where the typing is. A zoom with a point picked by hand stays on it.
 /// Nothing outside a segment affects it, and outside segments the view isn't zoomed at all.
 nonisolated struct ZoomCamera: Sendable {
     private static let rate = 60.0
@@ -29,12 +30,13 @@ nonisolated struct ZoomCamera: Sendable {
 
     private let tracks: [Track]
 
-    /// `cursor` and `clicks` are in recording time, like the segments. Segments without their own
-    /// level use `defaultLevel`.
-    init(segments: [ZoomSegment], cursor: CursorPath?, clicks: [CursorTrack.Click], defaultLevel: Double) {
+    /// `cursor`, `clicks` and `typing` (from `AutoZoom.typingBursts`) are in recording time, like the
+    /// segments. Segments without their own level use `defaultLevel`.
+    init(segments: [ZoomSegment], cursor: CursorPath?, clicks: [CursorTrack.Click], typing: [CursorTrack.Click] = [], defaultLevel: Double) {
+        let events = (clicks + typing).sorted { $0.t < $1.t }
         tracks = segments.map { segment in
             let visible = 1 / max(segment.level ?? defaultLevel, 1)
-            return Self.track(for: segment, cursor: cursor, clicks: clicks, visible: visible)
+            return Self.track(for: segment, cursor: cursor, clicks: events, typing: typing, visible: visible)
         }
     }
 
@@ -45,9 +47,24 @@ nonisolated struct ZoomCamera: Sendable {
         return track.points[index]
     }
 
-    private static func track(for segment: ZoomSegment, cursor: CursorPath?, clicks: [CursorTrack.Click], visible: Double) -> Track {
+    /// Typing holds the camera on where it is for this long after the last key press.
+    private static let typingHold = 0.5
+
+    private static func track(for segment: ZoomSegment, cursor: CursorPath?, clicks: [CursorTrack.Click], typing: [CursorTrack.Click], visible: Double) -> Track {
+        let step = 1 / rate
+        let count = max(Int(((segment.end - segment.start) * rate).rounded(.up)), 0) + 1
+
+        // A point picked by hand is where the zoom stays.
+        if let focus = segment.focus {
+            return Track(start: segment.start, end: segment.end, points: Array(repeating: clamp(focus, visible: visible), count: count))
+        }
+
+        let typing = typing.filter { $0.t <= segment.end && $0.t + $0.duration + typingHold >= segment.start }
         func cursorPosition(at time: Double) -> CGPoint {
-            cursor?.position(at: time) ?? CGPoint(x: 0.5, y: 0.5)
+            if let burst = typing.first(where: { time >= $0.t && time <= $0.t + $0.duration + typingHold }) {
+                return CGPoint(x: burst.x, y: burst.y)
+            }
+            return cursor?.position(at: time) ?? CGPoint(x: 0.5, y: 0.5)
         }
         let firstClick = clicks.first {
             $0.t >= segment.start && $0.t <= min(segment.start + startClickWindow, segment.end)
@@ -59,8 +76,6 @@ nonisolated struct ZoomCamera: Sendable {
         // A zoom that doesn't follow the cursor stays where it started.
         let follows = segment.followsCursor ?? true
 
-        let step = 1 / rate
-        let count = max(Int(((segment.end - segment.start) * rate).rounded(.up)), 0) + 1
         var points: [CGPoint] = []
         points.reserveCapacity(count)
 

@@ -60,6 +60,9 @@ nonisolated struct CursorTrack: Codable, Sendable {
     /// Scope followed the cursor's shape, which show the arrow throughout.
     var shapes: [Shape]?
     var shapeChanges: [ShapeChange]?
+    /// When a key was pressed, for zooming in on typing. Only the times are kept, never which keys.
+    /// `nil` in projects recorded before Scope noted them.
+    var keyPresses: [Double]?
 
     static func read(from url: URL) throws -> CursorTrack {
         try JSONDecoder().decode(CursorTrack.self, from: Data(contentsOf: url))

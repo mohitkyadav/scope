@@ -20,7 +20,8 @@
 | | |
 |---|---|
 | **Record** | Display or window · mic, system audio, camera · countdown · ⌘⇧2 to stop · 30/60 fps |
-| **Zoom** | Auto zoom on clicks · per-zoom level and transition · smoothed cursor · click ripples · motion blur |
+| **Zoom** | Auto zoom on clicks and typing · pick the area · per-zoom level, transition and animation · spotlight · motion blur |
+| **Cursor** | Smoothed path · real cursor shapes · click ripples · hides when still · glides across cuts |
 | **Style** | Gradient or image backgrounds · padding, corners, shadow · webcam bubble |
 | **Edit** | Split, delete, 0.25–4× speed · notes · per-track volume · music and voice-over · undo |
 | **Export** | MP4 at any size and quality · seamless looping GIFs |
@@ -29,7 +30,7 @@ Every recording is a project you can reopen and keep editing, saved to Downloads
 
 ## Private
 
-Scope never connects to the internet: no analytics, no tracking, no update checks. It runs in Apple's App Sandbox without network access, so it couldn't even if it tried. Check for yourself:
+Scope never connects to the internet: no analytics, no tracking, no update checks. It runs in Apple's App Sandbox without network access, so it couldn't even if it tried. For zooming on typing it notes when keys are pressed, never which. Check for yourself:
 
 ```sh
 codesign -d --entitlements - /Applications/Scope.app   # no network.client entitlement
