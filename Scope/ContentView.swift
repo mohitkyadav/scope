@@ -15,6 +15,7 @@ struct ContentView: View {
     @State private var camera = CameraSettings()
     @State private var microphoneMeter = AudioMeter()
     @State private var systemAudioMeter = AudioMeter()
+    @State private var areaOutline = AreaOutline()
     @Environment(Recorder.self) private var recorder
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.openWindow) private var openWindow
@@ -75,6 +76,14 @@ struct ContentView: View {
                 if permission.isGranted {
                     Task { await sources.load() }
                 }
+            }
+        }
+        .onChange(of: recorder.state) {
+            // Outline the area while it's being recorded, from the countdown on.
+            if recorder.state == .countingDown || recorder.state == .recording, sources.kind == .area, let region = sources.selectedRegion {
+                areaOutline.show(region)
+            } else if recorder.state == .idle || recorder.state == .stopping {
+                areaOutline.hide()
             }
         }
         .onChange(of: recorder.lastProject) {
@@ -161,6 +170,7 @@ struct ContentView: View {
         switch sources.kind {
         case .display: return "display-\(sources.selectedDisplayID ?? 0)"
         case .window: return "window-\(sources.selectedWindowID ?? 0)"
+        case .area: return "display-\(sources.selectedRegion?.displayID ?? 0)"
         }
     }
 

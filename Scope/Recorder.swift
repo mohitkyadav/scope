@@ -96,6 +96,10 @@ final class Recorder: NSObject {
         )
         configuration.width = Int(size.width)
         configuration.height = Int(size.height)
+        // An area is cropped from its display.
+        if case .region(_, let rect) = area {
+            configuration.sourceRect = rect
+        }
         configuration.minimumFrameInterval = CMTime(value: 1, timescale: CMTimeScale(RecordingPreferences.frameRate))
         configuration.queueDepth = 6
         // Scope draws its own cursor from the recorded cursor data, so leave the real one out.

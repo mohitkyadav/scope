@@ -9,12 +9,18 @@ import AppKit
 nonisolated enum CaptureArea: Sendable {
     case display(CGDirectDisplayID)
     case window(CGWindowID)
+    /// Part of a display, in points from its top left.
+    case region(CGDirectDisplayID, CGRect)
 
     /// Current bounds in global screen points with a top-left origin, or `nil` if it's gone.
     var bounds: CGRect? {
         switch self {
         case .display(let displayID):
             return CGDisplayBounds(displayID)
+        case .region(let displayID, let rect):
+            let display = CGDisplayBounds(displayID)
+            guard !display.isEmpty else { return nil }
+            return rect.offsetBy(dx: display.minX, dy: display.minY)
         case .window(let windowID):
             guard let info = CGWindowListCopyWindowInfo(.optionIncludingWindow, windowID) as? [[String: Any]],
                   let bounds = info.first?[kCGWindowBounds as String] as? NSDictionary

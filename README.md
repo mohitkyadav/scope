@@ -19,7 +19,7 @@
 
 | | |
 |---|---|
-| **Record** | Display or window · mic, system audio, camera · countdown · ⌘⇧2 to stop · 30/60 fps |
+| **Record** | Display, window or an area of the screen · mic, system audio, camera · countdown · ⌘⇧2 to stop · 30/60 fps |
 | **Zoom** | Auto zoom on clicks and typing · pick the area · per-zoom level, transition and animation · spotlight · motion blur |
 | **Cursor** | Smoothed path · real cursor shapes · click ripples · hides when still · glides across cuts |
 | **Style** | Gradient or image backgrounds · padding, corners, shadow · webcam bubble |

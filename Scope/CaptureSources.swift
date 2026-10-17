@@ -34,6 +34,7 @@ final class CaptureSources {
     enum Kind: String, CaseIterable, Identifiable {
         case display = "Display"
         case window = "Window"
+        case area = "Area"
 
         var id: Self { self }
     }
@@ -44,15 +45,22 @@ final class CaptureSources {
     private(set) var errorMessage: String?
     var selectedDisplayID: CGDirectDisplayID?
     var selectedWindowID: CGWindowID?
+    /// The part of a display to record when recording an area. Kept for next time.
+    var selectedRegion: ScreenRegion? = CaptureSources.savedRegion() {
+        didSet { Self.save(selectedRegion) }
+    }
     private var ownApp: SCRunningApplication?
 
     var selectedDisplay: Display? { displays.first { $0.id == selectedDisplayID } }
     var selectedWindow: CaptureWindow? { windows.first { $0.id == selectedWindowID } }
+    /// The display the chosen area is on.
+    var regionDisplay: Display? { displays.first { $0.id == selectedRegion?.displayID } }
 
     var hasSelection: Bool {
         switch kind {
         case .display: selectedDisplay != nil
         case .window: selectedWindow != nil
+        case .area: regionDisplay != nil
         }
     }
 
@@ -70,6 +78,14 @@ final class CaptureSources {
         case .window:
             guard let selectedWindow else { return nil }
             return SCContentFilter(desktopIndependentWindow: selectedWindow.scWindow)
+        case .area:
+            // The whole display, cropped to the area by the stream's configuration.
+            guard let regionDisplay else { return nil }
+            return SCContentFilter(
+                display: regionDisplay.scDisplay,
+                excludingApplications: ownApp.map { [$0] } ?? [],
+                exceptingWindows: []
+            )
         }
     }
 
@@ -78,6 +94,7 @@ final class CaptureSources {
         switch kind {
         case .display: selectedDisplayID.map(CaptureArea.display)
         case .window: selectedWindowID.map(CaptureArea.window)
+        case .area: selectedRegion.map { CaptureArea.region($0.displayID, $0.rect) }
         }
     }
 
@@ -86,6 +103,8 @@ final class CaptureSources {
         switch kind {
         case .display:
             return NSScreen.screens.first { $0.displayID == selectedDisplayID }
+        case .area:
+            return NSScreen.screens.first { $0.displayID == selectedRegion?.displayID }
         case .window:
             guard let frame = selectedWindow?.scWindow.frame else { return nil }
             let center = CGPoint(x: frame.midX, y: frame.midY)
@@ -118,6 +137,27 @@ final class CaptureSources {
         if selectedWindow == nil {
             selectedWindowID = windows.first?.id
         }
+        // An area that no longer fits its display, e.g. after the resolution changed, is forgotten.
+        if let selectedRegion, let display = regionDisplay,
+           !CGRect(origin: .zero, size: CGDisplayBounds(display.id).size).contains(selectedRegion.rect) {
+            self.selectedRegion = nil
+        }
+    }
+
+    private static let regionKey = "recordingArea"
+
+    private static func savedRegion() -> ScreenRegion? {
+        guard let values = UserDefaults.standard.array(forKey: regionKey) as? [Double], values.count == 5 else { return nil }
+        return ScreenRegion(displayID: CGDirectDisplayID(values[0]), rect: CGRect(x: values[1], y: values[2], width: values[3], height: values[4]))
+    }
+
+    private static func save(_ region: ScreenRegion?) {
+        guard let region else {
+            UserDefaults.standard.removeObject(forKey: regionKey)
+            return
+        }
+        let rect = region.rect
+        UserDefaults.standard.set([Double(region.displayID), rect.minX, rect.minY, rect.width, rect.height], forKey: regionKey)
     }
 
     /// Normal app windows only: no menu bar items, overlays, tiny helper windows or Scope itself.

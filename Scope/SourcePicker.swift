@@ -5,10 +5,12 @@
 
 import SwiftUI
 
-/// What to record: a Display / Window switch, then a pill showing the chosen display or window
-/// (with its app's icon) that opens a menu of the others.
+/// What to record: a Display / Window / Area switch, then a pill showing the chosen display or
+/// window (with its app's icon) that opens a menu of the others, or the chosen area, which is
+/// picked on screen.
 struct SourcePicker: View {
     @Bindable var sources: CaptureSources
+    @State private var isSelectingArea = false
 
     var body: some View {
         if let errorMessage = sources.errorMessage {
@@ -19,17 +21,51 @@ struct SourcePicker: View {
                 PillPicker(options: CaptureSources.Kind.allCases.map { ($0, $0.rawValue) }, selection: $sources.kind)
                     .fixedSize()
 
-                Menu {
-                    menuItems
-                } label: {
-                    SourceLabel(icon: currentIcon, title: currentTitle)
+                if sources.kind == .area {
+                    Button(action: selectArea) {
+                        SourceLabel(icon: .symbol("rectangle.dashed"), title: areaTitle, indicator: "scope")
+                    }
+                    .buttonStyle(.plain)
+                    .fixedSize()
+                    .help("Choose the area to record")
+                } else {
+                    Menu {
+                        menuItems
+                    } label: {
+                        SourceLabel(icon: currentIcon, title: currentTitle)
+                    }
+                    .menuStyle(.button)
+                    .buttonStyle(.plain)
+                    .menuIndicator(.hidden)
+                    .fixedSize()
                 }
-                .menuStyle(.button)
-                .buttonStyle(.plain)
-                .menuIndicator(.hidden)
-                .fixedSize()
+            }
+            .onChange(of: sources.kind) {
+                // There's nothing to record until an area is chosen, so go straight to choosing one.
+                if sources.kind == .area, sources.selectedRegion == nil {
+                    selectArea()
+                }
             }
         }
+    }
+
+    private func selectArea() {
+        guard !isSelectingArea else { return }
+        isSelectingArea = true
+        Task {
+            if let region = await AreaSelector.select(current: sources.regionDisplay == nil ? nil : sources.selectedRegion) {
+                sources.selectedRegion = region
+            }
+            isSelectingArea = false
+        }
+    }
+
+    /// "1280 × 720 on Studio Display", in pixels.
+    private var areaTitle: String {
+        guard let region = sources.selectedRegion, let display = sources.regionDisplay else { return "Choose an area" }
+        let scale = NSScreen.screens.first { $0.displayID == region.displayID }?.backingScaleFactor ?? 2
+        let size = "\(Int((region.rect.width * scale).rounded())) × \(Int((region.rect.height * scale).rounded()))"
+        return NSScreen.screens.count > 1 ? "\(size) on \(display.name)" : size
     }
 
     @ViewBuilder
@@ -43,6 +79,8 @@ struct SourcePicker: View {
                     Label("\(display.name) — \(display.resolution)", systemImage: display.id == sources.selectedDisplayID ? "checkmark" : "display")
                 }
             }
+        case .area:
+            EmptyView()
         case .window:
             if sources.windows.isEmpty {
                 Text("No windows")
@@ -69,6 +107,7 @@ struct SourcePicker: View {
         switch sources.kind {
         case .display: .symbol("display")
         case .window: sources.selectedWindow?.icon.map { .image($0) } ?? .symbol("macwindow")
+        case .area: .symbol("rectangle.dashed")
         }
     }
 
@@ -76,6 +115,7 @@ struct SourcePicker: View {
         switch sources.kind {
         case .display: sources.selectedDisplay?.name ?? "No display"
         case .window: sources.selectedWindow?.label ?? "Choose a window"
+        case .area: areaTitle
         }
     }
 }
@@ -89,6 +129,8 @@ private struct SourceLabel: View {
 
     let icon: Icon
     let title: String
+    /// The symbol at the end, showing what clicking does.
+    var indicator = "chevron.up.chevron.down"
 
     var body: some View {
         HStack(spacing: 8) {
@@ -111,7 +153,7 @@ private struct SourceLabel: View {
                 .truncationMode(.tail)
                 .frame(maxWidth: 220, alignment: .leading)
 
-            Image(systemName: "chevron.up.chevron.down")
+            Image(systemName: indicator)
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(.secondary)
         }
