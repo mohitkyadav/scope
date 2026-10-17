@@ -17,6 +17,8 @@ nonisolated struct ZoomSegment: Identifiable, Codable, Equatable, Sendable {
     var transition: Double?
     var followsCursor: Bool?
     var easing: ZoomEasing?
+    /// Whether the spotlight is on during this zoom. `nil` follows the Spotlight setting.
+    var spotlight: Bool?
     /// The point the zoom is centred on, as fractions of the recording from the top left, when it's
     /// been picked by hand. `nil` aims at the first click and follows the cursor as set.
     var focusX: Double?
@@ -30,7 +32,7 @@ nonisolated struct ZoomSegment: Identifiable, Codable, Equatable, Sendable {
     }
 
     var hasOwnSettings: Bool {
-        level != nil || transition != nil || followsCursor != nil || easing != nil || focus != nil
+        level != nil || transition != nil || followsCursor != nil || easing != nil || focus != nil || spotlight != nil
     }
 
     func overlaps(_ other: ZoomSegment) -> Bool {
@@ -177,19 +179,25 @@ nonisolated enum AutoZoom {
     /// their own settings use the defaults.
     static func state(at time: Double, segments: [ZoomSegment], defaultLevel: Double, defaultTransition: Double, defaultEasing: ZoomEasing = .spring) -> State {
         var state = State()
-        for segment in segments where time >= segment.start && time <= segment.end {
+        for segment in segments {
             let level = segment.level ?? defaultLevel
             guard level > 1 else { continue }
-            let transition = max(min(segment.transition ?? defaultTransition, (segment.end - segment.start) / 2), 0.01)
-            let easing = segment.easing ?? defaultEasing
-            let zoomedIn = easing.progress(time - segment.start, duration: transition)
-            let zoomedOut = easing.progress(time - (segment.end - transition), duration: transition)
-            let amount = zoomedIn * (1 - zoomedOut)
+            let amount = amount(of: segment, at: time, defaultTransition: defaultTransition, defaultEasing: defaultEasing)
             if amount > state.amount {
                 state = State(amount: amount, level: level)
             }
         }
         return state
+    }
+
+    /// How far `segment` alone is zoomed in at `time`, from 0 to 1.
+    static func amount(of segment: ZoomSegment, at time: Double, defaultTransition: Double, defaultEasing: ZoomEasing) -> Double {
+        guard time >= segment.start, time <= segment.end else { return 0 }
+        let transition = max(min(segment.transition ?? defaultTransition, (segment.end - segment.start) / 2), 0.01)
+        let easing = segment.easing ?? defaultEasing
+        let zoomedIn = easing.progress(time - segment.start, duration: transition)
+        let zoomedOut = easing.progress(time - (segment.end - transition), duration: transition)
+        return zoomedIn * (1 - zoomedOut)
     }
 
     /// A critically damped spring going from 0 to 1 that has settled after `duration` seconds: it

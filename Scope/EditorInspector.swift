@@ -48,6 +48,8 @@ struct EditorInspector: View {
     var zoomedView: (Double) -> CGSize = { CGSize(width: 1 / $0, height: 1 / $0) }
     /// Whether the recording noted typing, so zooms can be suggested for it.
     var hasTyping = false
+    /// Whether any zoom has its spotlight turned on, which needs the spotlight's size and dimming.
+    var hasZoomSpotlight = false
 
     @FocusState private var isEditingNote: Bool
     @FocusState private var isEditingHex: Bool
@@ -381,7 +383,7 @@ struct EditorInspector: View {
                 ForEach(Spotlight.allCases) { Text($0.name).tag($0) }
             }
             .pickerStyle(.menu)
-            if settings.spotlight != .off {
+            if settings.spotlight != .off || hasZoomSpotlight {
                 LabeledSlider("Size", value: $settings.spotlightSize, in: 0.05...0.35) {
                     "\(Int(($0 * 100).rounded()))%"
                 }
@@ -392,7 +394,7 @@ struct EditorInspector: View {
         } header: {
             Text("Spotlight")
         } footer: {
-            Text("Darkens everything but a circle around the cursor.")
+            Text("Darkens everything but a circle around the cursor. Select a zoom to turn it on or off for just that zoom.")
                 .foregroundStyle(.secondary)
         }
     }
@@ -491,6 +493,15 @@ extension EditorInspector {
                     }
                 ))
             }
+            Toggle("Spotlight", isOn: Binding(
+                get: { zoom.spotlight ?? (settings.spotlight != .off) },
+                set: { isOn in
+                    var changed = zoom
+                    changed.spotlight = isOn
+                    onZoomChange(changed, false, isOn ? "Turn On Spotlight" : "Turn Off Spotlight")
+                }
+            ))
+            .help("Darken everything but a circle around the cursor during this zoom")
             zoomAreaRow(zoom)
             LabeledContent("Settings") {
                 Button("Use Defaults") {
@@ -499,6 +510,7 @@ extension EditorInspector {
                     changed.transition = nil
                     changed.followsCursor = nil
                     changed.easing = nil
+                    changed.spotlight = nil
                     changed.focusX = nil
                     changed.focusY = nil
                     onZoomChange(changed, false, "Use Default Zoom Settings")

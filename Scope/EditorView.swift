@@ -180,6 +180,7 @@ struct EditorView: View {
                     segment.transition = zoom.transition
                     segment.followsCursor = zoom.followsCursor
                     segment.easing = zoom.easing
+                    segment.spotlight = zoom.spotlight
                     segment.focusX = zoom.focusX
                     segment.focusY = zoom.focusY
                 }
@@ -207,7 +208,8 @@ struct EditorView: View {
             videoAspectRatio: zoomThumbnail.map { CGFloat($0.width) / CGFloat(max($0.height, 1)) } ?? 16 / 9,
             automaticFocus: model.selectedZoom.flatMap(model.automaticFocus(of:)),
             zoomedView: { model.zoomedView(level: $0) },
-            hasTyping: model.hasTyping
+            hasTyping: model.hasTyping,
+            hasZoomSpotlight: model.edits.zooms.contains { $0.spotlight == true }
         )
     }
 

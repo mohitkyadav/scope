@@ -509,7 +509,7 @@ nonisolated struct FrameRenderer: @unchecked Sendable {
     /// The recording darkened and slightly softened, for outside the spotlight, or `nil` when the
     /// spotlight is off. Made once per frame and shared by the moments motion blur draws.
     private func spotlightShade(_ source: CIImage) -> CIImage? {
-        guard settings.spotlight != .off, cursorPath != nil else { return nil }
+        guard settings.spotlight != .off || zoomSegments.contains(where: { $0.spotlight == true }), cursorPath != nil else { return nil }
         let rect = CGRect(origin: .zero, size: videoSize)
         let brightness = 1 - 0.8 * min(max(settings.spotlightDim, 0), 1)
         return source.cropped(to: rect)
@@ -523,13 +523,28 @@ nonisolated struct FrameRenderer: @unchecked Sendable {
             ])
     }
 
+    /// How strongly the spotlight shows at `time`, from 0 to 1. Zooms with their own spotlight setting
+    /// fade it in or out as they zoom in and out; the rest follow the Spotlight setting.
+    private func spotlightStrength(at time: Double) -> Double {
+        func amount(_ segment: ZoomSegment) -> Double {
+            guard settings.autoZoom, (segment.level ?? settings.zoomLevel) > 1 else { return 0 }
+            return AutoZoom.amount(of: segment, at: time, defaultTransition: settings.zoomTransition, defaultEasing: settings.zoomEasing)
+        }
+        if settings.spotlight == .always {
+            let off = zoomSegments.filter { $0.spotlight == false }.map(amount).max() ?? 0
+            return 1 - off
+        }
+        let isOnByDefault = settings.spotlight == .zooms
+        return zoomSegments.filter { $0.spotlight ?? isOnByDefault }.map(amount).max() ?? 0
+    }
+
     /// The recording with everything outside a soft circle around the cursor swapped for `shade`.
     /// The circle stays the same size on screen however far the view is zoomed in. During zooms
     /// only, it fades in and out with the zoom; it also fades when the cursor leaves the recording.
     private func spotlight(_ frame: CIImage, shade: CIImage, at time: Double, outputTime: Double) -> CIImage {
         guard let position = cursorPosition(at: time, outputTime: outputTime) else { return frame }
         let zoom = zoomState(at: time)
-        var strength = settings.spotlight == .always ? 1 : zoom.amount
+        var strength = spotlightStrength(at: time)
         let outside = max(-position.x, position.x - 1, -position.y, position.y - 1, 0)
         strength *= max(0, 1 - outside / 0.05)
         guard strength > 0.01 else { return frame }
